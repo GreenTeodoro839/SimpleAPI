@@ -1,0 +1,139 @@
+version: 1
+
+server:
+  listen: "127.0.0.1:8317"
+  request_timeout_seconds: 600
+  stream_idle_timeout_seconds: 300
+
+proxy:
+  # 同一个入站 API key 下，某个候选模型连续失败达到该值后，
+  # 同 aliasB 的后续请求会尝试下一个优先级候选。
+  max_consecutive_failures: 2
+  failure_reset_seconds: 300
+  rewrite_response_model: true
+  usage_statistics_enabled: true
+  upstream_retry_status_codes: [408, 429, 500, 502, 503, 504]
+
+management:
+  enabled: true
+  base_path: "/-/api"
+  admin_key: "${PROXY_ADMIN_KEY}"
+
+payload:
+  # default/default-raw 只在字段不存在时写入。
+  default:
+    - models:
+        - name: "anthropic-main_sonnet4"
+          protocol: "anthropic"
+      params:
+        "max_tokens": 4096
+
+  # raw 规则的值是 JSON 片段字符串，适合写入对象或数组。
+  default-raw:
+    - models:
+        - name: "openai-main_gpt41mini"
+          protocol: "openai_completion"
+          not-exist:
+            - "response_format"
+      params:
+        "response_format": "{\"type\":\"json_object\"}"
+
+  # override/override-raw 总是覆盖已有字段。
+  override:
+    - models:
+        - name: "codex-main_codex5"
+          protocol: "codex"
+          from-protocol: "codex"
+      params:
+        "reasoning.effort": "medium"
+
+  override-raw:
+    - models:
+        - name: "codex-main_codex5"
+          protocol: "codex"
+          headers:
+            X-Client-Tier: "dev-*"
+      params:
+        "metadata": "{\"routed_by\":\"lightweight-proxy\"}"
+
+  # filter 删除最终出站 payload 中不想透传给上游的字段。
+  filter:
+    - models:
+        - name: "*"
+      params:
+        - "metadata.client_debug"
+        - "metadata.disable_payload"
+
+providers:
+  - name: "anthropic-main"
+    type: "anthropic"
+    url: "https://api.anthropic.com"
+    key: "${ANTHROPIC_API_KEY}"
+    headers:
+      anthropic-version: "2023-06-01"
+    models:
+      - model: "claude-sonnet-4-20250514"
+        aliasA: "sonnet4"
+        anthropic_web_search_forward:
+          enabled: true
+          target_model: "anthropic-search_sonnet4-search"
+
+  - name: "anthropic-search"
+    type: "anthropic"
+    url: "https://api.anthropic.com"
+    key: "${ANTHROPIC_SEARCH_API_KEY}"
+    headers:
+      anthropic-version: "2023-06-01"
+    models:
+      - model: "claude-sonnet-4-20250514"
+        aliasA: "sonnet4-search"
+
+  - name: "openai-main"
+    type: "openai_completion"
+    url: "https://api.openai.com/v1"
+    key: "${OPENAI_API_KEY}"
+    headers: {}
+    models:
+      - model: "gpt-4.1-mini"
+        aliasA: "gpt41mini"
+
+  - name: "codex-main"
+    type: "codex"
+    url: "https://api.openai.com/v1"
+    key: "${CODEX_API_KEY}"
+    headers: {}
+    models:
+      - model: "gpt-5-codex"
+        aliasA: "codex5"
+
+api_keys:
+  - name: "dev-all"
+    key: "${CLIENT_API_KEY_DEV}"
+    allowed_protocols:
+      - "anthropic"
+      - "openai_completion"
+      - "codex"
+    models:
+      # 客户端用 model: "claude" 调用。
+      # 优先走 anthropic-main_sonnet4；连续失败超过阈值后走 anthropic-search_sonnet4-search。
+      - model: "anthropic-main_sonnet4"
+        aliasB: "claude"
+        priority: 100
+      - model: "anthropic-search_sonnet4-search"
+        aliasB: "claude"
+        priority: 50
+      - model: "openai-main_gpt41mini"
+        aliasB: "gpt-mini"
+        priority: 0
+      - model: "codex-main_codex5"
+        aliasB: "codex"
+        priority: 0
+
+  - name: "codex-only"
+    key: "${CLIENT_API_KEY_CODEX}"
+    allowed_protocols:
+      - "codex"
+    models:
+      - model: "codex-main_codex5"
+        aliasB: "codex"
+        priority: 0

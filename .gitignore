@@ -1,0 +1,18 @@
+# Binaries
+/bin/
+/proxy
+*.exe
+
+# Test artifacts (not shipped)
+/config.test.yaml
+/config.relay.yaml
+/scripts/smoke.sh
+/deepseek.txt
+/tmp/
+*.out
+coverage.*
+
+# Editor/OS
+.idea/
+.vscode/
+.DS_Store

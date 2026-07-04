@@ -1,0 +1,974 @@
+openapi: 3.1.0
+info:
+  title: Lightweight AI Proxy Web API
+  version: "1.0.0"
+  description: >
+    轻量级 AI 协议代理 Web API 规格。包含三个客户端兼容接口和一组管理接口。
+    配置来源为 config.yaml，不使用数据库。
+
+servers:
+  - url: http://127.0.0.1:8317
+
+tags:
+  - name: Proxy
+    description: 客户端 AI 兼容接口
+  - name: Management
+    description: 配置管理和运行状态接口
+
+security:
+  - ClientBearerAuth: []
+
+paths:
+  /v1/messages:
+    post:
+      tags: [Proxy]
+      summary: Anthropic Messages 兼容接口
+      description: >
+        客户端请求体中的 model 必须填写当前 API key 下允许的 aliasB。
+        若目标上游也是 anthropic，则透传；否则进入协议翻译。
+      security:
+        - ClientBearerAuth: []
+        - ClientApiKeyHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenericJson"
+      responses:
+        "200":
+          description: Anthropic Messages 响应或翻译后的兼容响应，model 字段会改回 aliasB。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericJson"
+            text/event-stream:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "502":
+          $ref: "#/components/responses/UpstreamError"
+
+  /v1/chat/completions:
+    post:
+      tags: [Proxy]
+      summary: OpenAI Chat Completions 兼容接口
+      description: >
+        本规格将 openai_completion 定义为 OpenAI Chat Completions 兼容接口。
+        客户端请求体中的 model 必须填写 aliasB。
+      security:
+        - ClientBearerAuth: []
+        - ClientApiKeyHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenericJson"
+      responses:
+        "200":
+          description: Chat Completions 响应或翻译后的兼容响应，model 字段会改回 aliasB。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericJson"
+            text/event-stream:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "502":
+          $ref: "#/components/responses/UpstreamError"
+
+  /v1/responses:
+    post:
+      tags: [Proxy]
+      summary: Codex / OpenAI Responses 兼容接口
+      description: >
+        Codex 暴露为 OpenAI Responses 风格接口。客户端请求体中的 model 必须填写 aliasB。
+      security:
+        - ClientBearerAuth: []
+        - ClientApiKeyHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenericJson"
+      responses:
+        "200":
+          description: Responses API 响应或翻译后的兼容响应，model 字段会改回 aliasB。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericJson"
+            text/event-stream:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "502":
+          $ref: "#/components/responses/UpstreamError"
+
+  /v1/models:
+    get:
+      tags: [Proxy]
+      summary: 获取当前 API key 可见模型
+      description: >
+        返回当前入站 API key 可见的 aliasB 列表。同一 aliasB 有多个候选模型时只返回一次。
+      security:
+        - ClientBearerAuth: []
+        - ClientApiKeyHeader: []
+      responses:
+        "200":
+          description: OpenAI 风格模型列表，id 使用 aliasB。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /-/health:
+    get:
+      tags: [Management]
+      summary: 健康检查
+      security: []
+      responses:
+        "200":
+          description: 服务存活。
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /-/api/config:
+    get:
+      tags: [Management]
+      summary: 获取当前配置
+      description: 返回脱敏后的当前配置。key 字段默认不返回明文。
+      security:
+        - AdminKeyAuth: []
+      responses:
+        "200":
+          description: 当前配置。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Config"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    put:
+      tags: [Management]
+      summary: 替换完整配置
+      description: >
+        用请求体替换完整配置。服务必须先校验完整配置；通过后原子写入 config.yaml 并重建运行时索引。
+      security:
+        - AdminKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Config"
+          application/yaml:
+            schema:
+              type: string
+      responses:
+        "200":
+          description: 配置已写入并生效。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /-/api/validate:
+    post:
+      tags: [Management]
+      summary: 校验配置但不写入
+      security:
+        - AdminKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Config"
+          application/yaml:
+            schema:
+              type: string
+      responses:
+        "200":
+          description: 校验结果。valid=false 时不会写入配置。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /-/api/payload:
+    get:
+      tags: [Management]
+      summary: 获取 payload 规则配置
+      description: 返回当前配置中的 payload 规则。该配置作用于最终发往上游的 JSON payload。
+      security:
+        - AdminKeyAuth: []
+      responses:
+        "200":
+          description: Payload 规则配置。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PayloadConfig"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    put:
+      tags: [Management]
+      summary: 替换 payload 规则配置
+      description: >
+        替换根配置中的 payload 节。服务必须先合成完整配置并校验；
+        raw 规则必须是合法 JSON 片段，且规则不得修改或删除顶层 model 字段。
+      security:
+        - AdminKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PayloadConfig"
+      responses:
+        "200":
+          description: Payload 规则已写入并生效。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /-/api/reload:
+    post:
+      tags: [Management]
+      summary: 从 config.yaml 重新加载配置
+      description: >
+        重新读取磁盘上的 config.yaml。若校验失败，保持当前运行时配置不变并返回 422。
+      security:
+        - AdminKeyAuth: []
+      responses:
+        "200":
+          description: 已重新加载。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /-/api/providers:
+    get:
+      tags: [Management]
+      summary: 获取 provider 列表
+      security:
+        - AdminKeyAuth: []
+      responses:
+        "200":
+          description: Provider 列表。
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [providers]
+                properties:
+                  providers:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Provider"
+    post:
+      tags: [Management]
+      summary: 新增 provider
+      description: 新增后必须校验完整配置；重复 name 或重复 aliasA 返回 422。
+      security:
+        - AdminKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Provider"
+      responses:
+        "201":
+          description: 已新增并写入配置。
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /-/api/providers/{name}:
+    get:
+      tags: [Management]
+      summary: 获取单个 provider
+      security:
+        - AdminKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ProviderName"
+      responses:
+        "200":
+          description: Provider。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Provider"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Management]
+      summary: 替换单个 provider
+      description: 替换后必须校验完整配置；非法修改不得写入 config.yaml。
+      security:
+        - AdminKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ProviderName"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Provider"
+      responses:
+        "200":
+          description: 已替换并写入配置。
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+    delete:
+      tags: [Management]
+      summary: 删除 provider
+      description: 若仍有 API key 引用该 provider 的模型，必须返回 422。
+      security:
+        - AdminKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ProviderName"
+      responses:
+        "204":
+          description: 已删除。
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /-/api/api-keys:
+    get:
+      tags: [Management]
+      summary: 获取入站 API key 配置列表
+      description: 默认脱敏 key 字段。
+      security:
+        - AdminKeyAuth: []
+      responses:
+        "200":
+          description: API key 配置列表。
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [api_keys]
+                properties:
+                  api_keys:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ClientApiKey"
+    post:
+      tags: [Management]
+      summary: 新增入站 API key
+      security:
+        - AdminKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientApiKey"
+      responses:
+        "201":
+          description: 已新增并写入配置。
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /-/api/api-keys/{keyName}:
+    get:
+      tags: [Management]
+      summary: 获取单个入站 API key 配置
+      security:
+        - AdminKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/KeyName"
+      responses:
+        "200":
+          description: API key 配置。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientApiKey"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Management]
+      summary: 替换单个入站 API key 配置
+      security:
+        - AdminKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/KeyName"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientApiKey"
+      responses:
+        "200":
+          description: 已替换并写入配置。
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+    delete:
+      tags: [Management]
+      summary: 删除入站 API key
+      security:
+        - AdminKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/KeyName"
+      responses:
+        "204":
+          description: 已删除。
+
+  /-/api/models:
+    get:
+      tags: [Management]
+      summary: 获取内部模型索引
+      description: 返回 providerName_aliasA 维度的模型列表。
+      security:
+        - AdminKeyAuth: []
+      responses:
+        "200":
+          description: 内部模型列表。
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [models]
+                properties:
+                  models:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/InternalModel"
+
+  /-/api/usage:
+    get:
+      tags: [Management]
+      summary: 获取内存使用统计
+      description: 统计按 provider、aliasA、internal model id 聚合，不按 aliasB 聚合。
+      security:
+        - AdminKeyAuth: []
+      responses:
+        "200":
+          description: 使用统计。
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/UsageItem"
+
+components:
+  securitySchemes:
+    ClientBearerAuth:
+      type: http
+      scheme: bearer
+      description: 入站客户端 API key。
+    ClientApiKeyHeader:
+      type: apiKey
+      in: header
+      name: x-api-key
+      description: 可选兼容认证头。
+    AdminKeyAuth:
+      type: apiKey
+      in: header
+      name: X-Admin-Key
+      description: 管理 API 密钥。
+
+  parameters:
+    ProviderName:
+      name: name
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[^_]+$"
+      description: Provider name，不能包含下划线。
+    KeyName:
+      name: keyName
+      in: path
+      required: true
+      schema:
+        type: string
+      description: api_keys[].name。
+
+  responses:
+    BadRequest:
+      description: 请求格式错误。
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: 缺少或错误的认证信息。
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: 当前 API key 无权访问该协议或模型。
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: 资源不存在。
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ValidationFailed:
+      description: 配置校验失败，配置不会写入或生效。
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ValidationResult"
+    UpstreamError:
+      description: 上游调用失败或无可用候选模型。
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+    GenericJson:
+      type: object
+      additionalProperties: true
+
+    Config:
+      type: object
+      required: [version, server, proxy, providers, api_keys]
+      additionalProperties: false
+      properties:
+        version:
+          type: integer
+          example: 1
+        server:
+          $ref: "#/components/schemas/ServerConfig"
+        proxy:
+          $ref: "#/components/schemas/ProxyConfig"
+        management:
+          $ref: "#/components/schemas/ManagementConfig"
+        payload:
+          $ref: "#/components/schemas/PayloadConfig"
+        providers:
+          type: array
+          items:
+            $ref: "#/components/schemas/Provider"
+        api_keys:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClientApiKey"
+
+    ServerConfig:
+      type: object
+      additionalProperties: false
+      properties:
+        listen:
+          type: string
+          example: "127.0.0.1:8317"
+        request_timeout_seconds:
+          type: integer
+          minimum: 1
+          default: 600
+        stream_idle_timeout_seconds:
+          type: integer
+          minimum: 1
+          default: 300
+
+    ProxyConfig:
+      type: object
+      additionalProperties: false
+      properties:
+        max_consecutive_failures:
+          type: integer
+          minimum: 1
+          default: 2
+        failure_reset_seconds:
+          type: integer
+          minimum: 0
+          default: 300
+        rewrite_response_model:
+          type: boolean
+          default: true
+        usage_statistics_enabled:
+          type: boolean
+          default: true
+        upstream_retry_status_codes:
+          type: array
+          items:
+            type: integer
+          default: [408, 429, 500, 502, 503, 504]
+
+    ManagementConfig:
+      type: object
+      additionalProperties: false
+      properties:
+        enabled:
+          type: boolean
+          default: true
+        base_path:
+          type: string
+          default: "/-/api"
+        admin_key:
+          type: string
+          description: 可使用环境变量占位符，GET 配置时应脱敏。
+
+    PayloadConfig:
+      type: object
+      additionalProperties: false
+      description: >
+        出站 payload 规则配置。执行顺序固定为 default、default-raw、override、override-raw、filter。
+      properties:
+        default:
+          type: array
+          description: 仅当目标 JSON path 不存在时写入普通 JSON 值。
+          items:
+            $ref: "#/components/schemas/PayloadRule"
+        default-raw:
+          type: array
+          description: 仅当目标 JSON path 不存在时写入原始 JSON 片段。
+          items:
+            $ref: "#/components/schemas/PayloadRule"
+        override:
+          type: array
+          description: 总是写入普通 JSON 值，覆盖已有值。
+          items:
+            $ref: "#/components/schemas/PayloadRule"
+        override-raw:
+          type: array
+          description: 总是写入原始 JSON 片段，覆盖已有值。
+          items:
+            $ref: "#/components/schemas/PayloadRule"
+        filter:
+          type: array
+          description: 删除匹配 JSON path。
+          items:
+            $ref: "#/components/schemas/PayloadFilterRule"
+
+    PayloadRule:
+      type: object
+      required: [models, params]
+      additionalProperties: false
+      properties:
+        models:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/PayloadModelRule"
+        params:
+          type: object
+          description: >
+            JSON path 到值的映射。default/override 使用普通 JSON 值；
+            default-raw/override-raw 中的值必须是合法 JSON 片段字符串。
+            不允许配置顶层 model。
+          additionalProperties: true
+          propertyNames:
+            type: string
+            not:
+              const: model
+
+    PayloadFilterRule:
+      type: object
+      required: [models, params]
+      additionalProperties: false
+      properties:
+        models:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/PayloadModelRule"
+        params:
+          type: array
+          description: 要删除的 JSON path 列表。不允许删除顶层 model。
+          items:
+            type: string
+            not:
+              const: model
+
+    PayloadModelRule:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: >
+            模型匹配表达式，支持 * 通配符。推荐使用 internal model id，例如 anthropic-main_sonnet4；
+            也可匹配 aliasA 或上游真实模型名。
+        protocol:
+          $ref: "#/components/schemas/Protocol"
+        from-protocol:
+          $ref: "#/components/schemas/Protocol"
+        headers:
+          type: object
+          description: 请求头匹配条件，值支持 * 通配符。
+          additionalProperties:
+            type: string
+        match:
+          type: array
+          description: 所有 JSON path 必须等于配置值。
+          items:
+            type: object
+            additionalProperties: true
+        not-match:
+          type: array
+          description: 所有 JSON path 必须不等于配置值。
+          items:
+            type: object
+            additionalProperties: true
+        exist:
+          type: array
+          description: 所有 JSON path 必须存在且不是 null。
+          items:
+            type: string
+        not-exist:
+          type: array
+          description: 所有 JSON path 必须不存在或为 null。
+          items:
+            type: string
+
+    Provider:
+      type: object
+      required: [name, type, url]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          pattern: "^[^_]+$"
+          description: 全局唯一，不能包含下划线。
+        type:
+          $ref: "#/components/schemas/Protocol"
+        url:
+          type: string
+          format: uri
+          description: 上游 base URL。
+        key:
+          type: string
+          description: 上游 API key，可为空；GET 配置时应脱敏。
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+        models:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProviderModel"
+
+    ProviderModel:
+      type: object
+      required: [model]
+      additionalProperties: false
+      properties:
+        model:
+          type: string
+          description: 上游真实模型名。
+        aliasA:
+          type: string
+          description: 内部别名；为空时默认等于 model。
+        anthropic_web_search_forward:
+          $ref: "#/components/schemas/WebSearchForward"
+
+    WebSearchForward:
+      type: object
+      required: [enabled]
+      additionalProperties: false
+      properties:
+        enabled:
+          type: boolean
+        target_model:
+          type: string
+          pattern: "^[^_]+_.+$"
+          description: 目标 internal model id，即 providerName_aliasA。
+
+    ClientApiKey:
+      type: object
+      required: [name, key, allowed_protocols, models]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: 管理 API 使用的 key 配置名，全局唯一。
+        key:
+          type: string
+          description: 入站 API key，GET 配置时应脱敏。
+        allowed_protocols:
+          type: array
+          items:
+            $ref: "#/components/schemas/Protocol"
+        models:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClientModel"
+
+    ClientModel:
+      type: object
+      required: [model]
+      additionalProperties: false
+      properties:
+        model:
+          type: string
+          pattern: "^[^_]+_.+$"
+          description: internal model id，即 providerName_aliasA。
+        aliasB:
+          type: string
+          description: 客户端可见模型名；为空时默认等于 aliasA。
+        priority:
+          type: integer
+          default: 0
+          description: 同 aliasB 候选模型的优先级，数值越大越优先。
+
+    InternalModel:
+      type: object
+      required: [id, provider, provider_type, aliasA, upstream_model]
+      properties:
+        id:
+          type: string
+          example: "anthropic-main_sonnet4"
+        provider:
+          type: string
+          example: "anthropic-main"
+        provider_type:
+          $ref: "#/components/schemas/Protocol"
+        aliasA:
+          type: string
+          example: "sonnet4"
+        upstream_model:
+          type: string
+          example: "claude-sonnet-4-20250514"
+
+    UsageItem:
+      type: object
+      required: [internal_model, provider, aliasA, requests]
+      properties:
+        internal_model:
+          type: string
+        provider:
+          type: string
+        aliasA:
+          type: string
+        upstream_model:
+          type: string
+        source_protocol:
+          $ref: "#/components/schemas/Protocol"
+        requests:
+          type: integer
+        failures:
+          type: integer
+        input_tokens:
+          type: integer
+        output_tokens:
+          type: integer
+
+    ModelList:
+      type: object
+      required: [object, data]
+      properties:
+        object:
+          type: string
+          example: list
+        data:
+          type: array
+          items:
+            type: object
+            required: [id, object]
+            properties:
+              id:
+                type: string
+                description: aliasB。
+              object:
+                type: string
+                example: model
+
+    Protocol:
+      type: string
+      enum:
+        - anthropic
+        - openai_completion
+        - codex
+
+    ValidationResult:
+      type: object
+      required: [valid]
+      properties:
+        valid:
+          type: boolean
+        errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/ValidationError"
+
+    ValidationError:
+      type: object
+      required: [path, code, message]
+      properties:
+        path:
+          type: string
+          example: "providers[0].models[1].aliasA"
+        code:
+          type: string
+          example: "duplicate_aliasA"
+        message:
+          type: string
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: "model_not_allowed"
+            message:
+              type: string
+            details:
+              type: object
+              additionalProperties: true
