@@ -1,142 +1,143 @@
+# SimpleAPI 配置文件。
+# 密钥支持 ${VAR} / ${VAR:-default} 环境变量占位符，启动时展开。
+# 模型内部 id 形如 "providerName/aliasA"（按第一个 "/" 切分，provider name 不能含 "/"）。
+#
+# 下面 server / proxy / management 是可运行的骨架；payload / providers / api_keys
+# 默认全部注释，即开箱不提供任何模型与密钥——请按需取消注释并改成你自己的值，
+# 或启动后通过管理 API（/-/api，需 X-Admin-Key）在线增改。
+
 version: 1
 
 server:
   listen: "127.0.0.1:8317"
-  request_timeout_seconds: 600
-  # Stream idle timeout in seconds. 0 (default) = disabled: streams run for the
-  # full client connection and are never aborted on idle. Set > 0 to abort a
-  # stream that receives no bytes for this long (resets on every chunk).
+  request_timeout_seconds: 600        # 非流式请求总超时（秒）
+  # 流式 idle 超时。0（默认，推荐）= 关闭：流只受客户端连接生命周期约束，永不因静默被中止。
+  # 设为 >0 则在"连续 N 秒收不到上游字节"时中止该流（每个 chunk 都会重置计时器）。
   stream_idle_timeout_seconds: 0
 
 proxy:
-  # 同一个入站 API key 下，某个候选模型连续失败达到该值后，
-  # 同 aliasB 的后续请求会尝试下一个优先级候选。
-  max_consecutive_failures: 2
-  failure_reset_seconds: 300
-  rewrite_response_model: true
-  usage_statistics_enabled: true
-  upstream_retry_status_codes: [408, 429, 500, 502, 503, 504]
+  max_consecutive_failures: 2         # 同一候选模型连续失败达到该值后，同 aliasB 的后续请求跳过它
+  failure_reset_seconds: 300          # 超过该秒数无新失败则清零失败计数（0 = 永不自动清零）
+  rewrite_response_model: true        # 把响应里的 model 改回客户端可见的 aliasB
+  usage_statistics_enabled: true      # 内存统计（仅按 provider/aliasA/internal id 聚合，不含 aliasB）
+  upstream_retry_status_codes: [408, 429, 500, 502, 503, 504]  # 视为上游失败、触发切换的状态码
 
 management:
   enabled: true
-  base_path: "/-/api"
-  admin_key: "${PROXY_ADMIN_KEY}"
+  base_path: "/-/api"                 # 管理接口前缀
+  admin_key: "${PROXY_ADMIN_KEY}"     # 管理密钥，GET 配置时会脱敏
 
-payload:
-  # default/default-raw 只在字段不存在时写入。
-  default:
-    - models:
-        - name: "anthropic-main/sonnet4"
-          protocol: "anthropic"
-      params:
-        "max_tokens": 4096
+# ---------------------------------------------------------------------------
+# payload：出站请求体改写规则，按固定顺序生效：
+#   default → default-raw → override → override-raw → filter
+#   default/default-raw：仅当 JSON path 不存在时写入（同 path 多规则先命中者生效）
+#   override/override-raw：总是覆盖（同 path 多规则后命中者生效）
+#   filter：删除匹配的 JSON path（反序删除以保护数组索引）
+#   raw 系列的值是 JSON 片段字符串（对象/数组）；其余为普通 JSON 值。
+#   任何规则都不得修改/删除顶层 model 字段。
+# ---------------------------------------------------------------------------
+# payload:
+#   default:
+#     - models:
+#         - name: "anthropic-main/sonnet4"   # internal id，也支持 aliasA / 上游模型名，支持 * 通配
+#       params:
+#         "max_tokens": 4096
+#
+#   default-raw:
+#     - models:
+#         - name: "openai-main/gpt41mini"
+#           not-exist: [ "response_format" ]   # 仅当该 path 不存在时写入
+#       params:
+#         "response_format": "{\"type\":\"json_object\"}"
+#
+#   override:
+#     - models:
+#         - name: "codex-main/codex5"
+#           protocol: "codex"          # 出站 provider type，可省略
+#           from-protocol: "codex"     # 客户端入站协议，可省略
+#           # headers: { X-Client-Tier: "dev-*" }                # 请求头匹配，值支持 * 通配
+#           # match:     [ { "metadata.client": "codex" } ]      # path 必须等于值
+#           # not-match: [ { "metadata.mode": "debug" } ]        # path 必须不等于值
+#           # exist:     [ "input" ]                              # path 必须存在且非 null
+#           # not-exist: [ "metadata.disable_payload" ]          # path 必须不存在或为 null
+#       params:
+#         "reasoning.effort": "medium"
+#
+#   filter:
+#     - models: [ { name: "*" } ]
+#       params: [ "metadata.client_debug", "metadata.disable_payload" ]
 
-  # raw 规则的值是 JSON 片段字符串，适合写入对象或数组。
-  default-raw:
-    - models:
-        - name: "openai-main/gpt41mini"
-          protocol: "openai_completion"
-          not-exist:
-            - "response_format"
-      params:
-        "response_format": "{\"type\":\"json_object\"}"
+# ---------------------------------------------------------------------------
+# providers：上游提供商。每个 provider 只有一套 name/type/url/headers/key。
+#   type ∈ anthropic | openai_completion | codex
+#   url 约定：anthropic 填 base（自动追加 /v1/messages）；openai_completion / codex 填含 /v1 的 base
+#           （分别追加 /chat/completions、/responses）。
+# ---------------------------------------------------------------------------
+# providers:
+#   - name: "anthropic-main"
+#     type: "anthropic"
+#     url: "https://api.anthropic.com"
+#     key: "${ANTHROPIC_API_KEY}"
+#     headers:
+#       anthropic-version: "2023-06-01"
+#     models:
+#       - model: "claude-sonnet-4-20250514"   # 上游真实模型名
+#         aliasA: "sonnet4"                    # 内部别名，为空则等于 model
+#         # anthropic_web_search_forward:      # 可选：把带 web_search 工具的请求转发到 target
+#         #   enabled: true
+#         #   target_model: "anthropic-search/sonnet4-search"
+#
+#   - name: "anthropic-search"
+#     type: "anthropic"
+#     url: "https://api.anthropic.com"
+#     key: "${ANTHROPIC_SEARCH_API_KEY}"
+#     headers: { anthropic-version: "2023-06-01" }
+#     models:
+#       - model: "claude-sonnet-4-20250514"
+#         aliasA: "sonnet4-search"
+#
+#   - name: "openai-main"
+#     type: "openai_completion"
+#     url: "https://api.openai.com/v1"
+#     key: "${OPENAI_API_KEY}"
+#     headers: {}
+#     models:
+#       - model: "gpt-4.1-mini"
+#         aliasA: "gpt41mini"
+#
+#   - name: "codex-main"
+#     type: "codex"
+#     url: "https://api.openai.com/v1"
+#     key: "${CODEX_API_KEY}"
+#     headers: {}
+#     models:
+#       - model: "gpt-5-codex"
+#         aliasA: "codex5"
 
-  # override/override-raw 总是覆盖已有字段。
-  override:
-    - models:
-        - name: "codex-main/codex5"
-          protocol: "codex"
-          from-protocol: "codex"
-      params:
-        "reasoning.effort": "medium"
-
-  override-raw:
-    - models:
-        - name: "codex-main/codex5"
-          protocol: "codex"
-          headers:
-            X-Client-Tier: "dev-*"
-      params:
-        "metadata": "{\"routed_by\":\"lightweight-proxy\"}"
-
-  # filter 删除最终出站 payload 中不想透传给上游的字段。
-  filter:
-    - models:
-        - name: "*"
-      params:
-        - "metadata.client_debug"
-        - "metadata.disable_payload"
-
-providers:
-  - name: "anthropic-main"
-    type: "anthropic"
-    url: "https://api.anthropic.com"
-    key: "${ANTHROPIC_API_KEY}"
-    headers:
-      anthropic-version: "2023-06-01"
-    models:
-      - model: "claude-sonnet-4-20250514"
-        aliasA: "sonnet4"
-        anthropic_web_search_forward:
-          enabled: true
-          target_model: "anthropic-search/sonnet4-search"
-
-  - name: "anthropic-search"
-    type: "anthropic"
-    url: "https://api.anthropic.com"
-    key: "${ANTHROPIC_SEARCH_API_KEY}"
-    headers:
-      anthropic-version: "2023-06-01"
-    models:
-      - model: "claude-sonnet-4-20250514"
-        aliasA: "sonnet4-search"
-
-  - name: "openai-main"
-    type: "openai_completion"
-    url: "https://api.openai.com/v1"
-    key: "${OPENAI_API_KEY}"
-    headers: {}
-    models:
-      - model: "gpt-4.1-mini"
-        aliasA: "gpt41mini"
-
-  - name: "codex-main"
-    type: "codex"
-    url: "https://api.openai.com/v1"
-    key: "${CODEX_API_KEY}"
-    headers: {}
-    models:
-      - model: "gpt-5-codex"
-        aliasA: "codex5"
-
-api_keys:
-  - name: "dev-all"
-    key: "${CLIENT_API_KEY_DEV}"
-    allowed_protocols:
-      - "anthropic"
-      - "openai_completion"
-      - "codex"
-    models:
-      # 客户端用 model: "claude" 调用。
-      # 优先走 anthropic-main/sonnet4；连续失败超过阈值后走 anthropic-search/sonnet4-search。
-      - model: "anthropic-main/sonnet4"
-        aliasB: "claude"
-        priority: 100
-      - model: "anthropic-search/sonnet4-search"
-        aliasB: "claude"
-        priority: 50
-      - model: "openai-main/gpt41mini"
-        aliasB: "gpt-mini"
-        priority: 0
-      - model: "codex-main/codex5"
-        aliasB: "codex"
-        priority: 0
-
-  - name: "codex-only"
-    key: "${CLIENT_API_KEY_CODEX}"
-    allowed_protocols:
-      - "codex"
-    models:
-      - model: "codex-main/codex5"
-        aliasB: "codex"
-        priority: 0
+# ---------------------------------------------------------------------------
+# api_keys：入站 API key，按 key 细分授权。
+#   models[].model 必须填 internal id（providerName/aliasA）；
+#   aliasB 是客户端看到的模型名（为空则等于 aliasA）；priority 越大越优先。
+# ---------------------------------------------------------------------------
+# api_keys:
+#   - name: "dev-all"
+#     key: "${CLIENT_API_KEY_DEV}"
+#     allowed_protocols: [ "anthropic", "openai_completion", "codex" ]
+#     models:
+#       - model: "anthropic-main/sonnet4"
+#         aliasB: "claude"
+#         priority: 100
+#       - model: "anthropic-search/sonnet4-search"   # 同 aliasB 多候选：主用 sonnet4，失败后切 sonnet4-search
+#         aliasB: "claude"
+#         priority: 50
+#       - model: "openai-main/gpt41mini"
+#         aliasB: "gpt-mini"
+#       - model: "codex-main/codex5"
+#         aliasB: "codex"
+#
+#   - name: "codex-only"
+#     key: "${CLIENT_API_KEY_CODEX}"
+#     allowed_protocols: [ "codex" ]
+#     models:
+#       - model: "codex-main/codex5"
+#         aliasB: "codex"
