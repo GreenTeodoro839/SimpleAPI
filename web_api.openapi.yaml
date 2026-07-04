@@ -905,6 +905,15 @@ components:
           type: integer
         output_tokens:
           type: integer
+        cache_read_tokens:
+          type: integer
+          description: anthropic cache_read_input_tokens 累计
+        cache_creation_tokens:
+          type: integer
+          description: anthropic cache_creation_input_tokens 累计
+        cached_tokens:
+          type: integer
+          description: openai/codex prompt_tokens_details.cached_tokens 累计
 
     ModelList:
       type: object

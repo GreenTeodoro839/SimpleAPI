@@ -13,6 +13,7 @@ import (
 	"github.com/GreenTeodoro839/SimpleAPI/internal/protocol"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/provider"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/translate"
+	"github.com/GreenTeodoro839/SimpleAPI/internal/usage"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 )
@@ -43,12 +44,6 @@ func (h *Handler) attemptNonStream(ctx context.Context, pe *indexes.ProviderEntr
 	return resp.StatusCode, resp.Header.Get("Content-Type"), respBytes, false
 }
 
-// streamUsage accumulates input/output tokens parsed from upstream SSE events.
-type streamUsage struct {
-	input  int64
-	output int64
-}
-
 // attemptStream calls the upstream and relays the SSE stream. Unlike non-stream,
 // it does NOT apply a total request timeout: it uses the client connection
 // lifetime (c.Request.Context()) and an idle timeout — if no upstream data
@@ -59,22 +54,22 @@ type streamUsage struct {
 //
 // Returns committed (bytes written → cannot retry), cleanComplete, retryable,
 // and the accumulated token counts.
-func (h *Handler) attemptStream(c *gin.Context, pe *indexes.ProviderEntry, body []byte, aliasB string, rewrite bool, retryCodes []int, pair *translate.Pair, idleTimeout time.Duration) (committed, cleanComplete, retryable bool, inTok, outTok int64) {
+func (h *Handler) attemptStream(c *gin.Context, pe *indexes.ProviderEntry, body []byte, aliasB string, rewrite bool, retryCodes []int, pair *translate.Pair, idleTimeout time.Duration) (committed, cleanComplete, retryable bool, counts usage.Counts) {
 	// No total deadline: the upstream call is bound to the client connection so a
 	// long-but-active stream is never cut, only a stalled one (idleTimeout).
 	resp, err := provider.Do(c.Request.Context(), pe, body)
 	if err != nil {
 		h.logger.WithError(err).WithField("provider", pe.Name).Debug("upstream stream call failed")
-		return false, false, true, 0, 0
+		return false, false, true, usage.Counts{}
 	}
 	defer resp.Body.Close()
 	if provider.IsRetryableStatus(resp.StatusCode, retryCodes) {
-		return false, false, true, 0, 0
+		return false, false, true, usage.Counts{}
 	}
 
-	var acc streamUsage
+	var acc usage.Counts
 	defer func() {
-		inTok, outTok = acc.input, acc.output
+		counts = acc
 		if !committed {
 			retryable = true
 		}
@@ -204,32 +199,113 @@ func (h *Handler) attemptStream(c *gin.Context, pe *indexes.ProviderEntry, body 
 	}
 }
 
-// accumulateUsage reads token counts out of one upstream SSE data payload.
-func accumulateUsage(payload []byte, upstreamType string, acc *streamUsage) {
+// accumulateUsage reads token counts out of one upstream SSE data payload into
+// acc, keeping the maximum seen per counter.
+//
+// Providers disagree on where the real counts live, so we take the maximum
+// value seen for each counter across the relevant events:
+//   - Standard Anthropic / DeepSeek: message_start carries the real
+//     input_tokens; message_delta carries the final output_tokens.
+//   - GLM: message_start.usage is all zeros (a placeholder); the real
+//     input_tokens AND output_tokens both arrive in the final message_delta.
+//
+// Taking the max covers both shapes (and providers that emit running counts):
+// the placeholder 0 never overrides a real value, and the largest seen count is
+// the final one.
+func accumulateUsage(payload []byte, upstreamType string, acc *usage.Counts) {
+	node, ok := usageNodeForEvent(payload, upstreamType)
+	if !ok || !node.Exists() {
+		return
+	}
+	c := parseUsageNode(node, upstreamType)
+	if c.Input > acc.Input {
+		acc.Input = c.Input
+	}
+	if c.Output > acc.Output {
+		acc.Output = c.Output
+	}
+	if c.CacheRead > acc.CacheRead {
+		acc.CacheRead = c.CacheRead
+	}
+	if c.CacheCreation > acc.CacheCreation {
+		acc.CacheCreation = c.CacheCreation
+	}
+	if c.Cached > acc.Cached {
+		acc.Cached = c.Cached
+	}
+}
+
+// usageNodeForEvent locates the usage JSON object in one SSE data payload for the
+// given upstream protocol. For Anthropic the location depends on the event type
+// (message_start nests it under message.usage; message_delta has it top-level).
+// Returns ok=false when the payload carries no usage (e.g. a content delta).
+func usageNodeForEvent(payload []byte, upstreamType string) (gjson.Result, bool) {
 	switch upstreamType {
 	case protocol.Anthropic:
 		switch gjson.GetBytes(payload, "type").String() {
 		case "message_start":
-			if v := gjson.GetBytes(payload, "message.usage.input_tokens"); v.Exists() {
-				acc.input = v.Int()
-			}
+			return gjson.GetBytes(payload, "message.usage"), true
 		case "message_delta":
-			if v := gjson.GetBytes(payload, "usage.output_tokens"); v.Exists() {
-				acc.output = v.Int()
-			}
+			return gjson.GetBytes(payload, "usage"), true
 		}
+		return gjson.Result{}, false
 	case protocol.OpenAICompletion:
-		if u := gjson.GetBytes(payload, "usage"); u.Exists() {
-			acc.input = u.Get("prompt_tokens").Int()
-			acc.output = u.Get("completion_tokens").Int()
-		}
+		return gjson.GetBytes(payload, "usage"), true
 	case protocol.Codex:
 		t := gjson.GetBytes(payload, "type").String()
-		if t == "response.completed" || t == "response.incomplete" {
-			if u := gjson.GetBytes(payload, "response.usage"); u.Exists() {
-				acc.input = u.Get("input_tokens").Int()
-				acc.output = u.Get("output_tokens").Int()
-			}
+		if t != "response.completed" && t != "response.incomplete" {
+			return gjson.Result{}, false
+		}
+		return gjson.GetBytes(payload, "response.usage"), true
+	}
+	return gjson.Result{}, false
+}
+
+// usageNodeForBody locates the usage JSON object in a full (non-streaming)
+// response body for the given upstream protocol.
+func usageNodeForBody(body []byte, upstreamType string) (gjson.Result, bool) {
+	if upstreamType == protocol.Codex {
+		return gjson.GetBytes(body, "response.usage"), true
+	}
+	return gjson.GetBytes(body, "usage"), true
+}
+
+// parseUsageNode extracts token counters from a usage JSON object for the given
+// protocol. Mirrors CLIProxyAPI's usage parsers: Anthropic reports
+// cache_read_input_tokens / cache_creation_input_tokens; OpenAI/codex report
+// prompt_tokens_details.cached_tokens. Missing fields are treated as 0; either
+// of a provider's two names for the same counter is accepted.
+func parseUsageNode(u gjson.Result, upstreamType string) usage.Counts {
+	var c usage.Counts
+	if !u.Exists() {
+		return c
+	}
+	switch upstreamType {
+	case protocol.Anthropic:
+		c.Input = u.Get("input_tokens").Int()
+		c.Output = u.Get("output_tokens").Int()
+		c.CacheRead = u.Get("cache_read_input_tokens").Int()
+		c.CacheCreation = u.Get("cache_creation_input_tokens").Int()
+	case protocol.OpenAICompletion:
+		c.Input = pick(u.Get("prompt_tokens"), u.Get("input_tokens"))
+		c.Output = pick(u.Get("completion_tokens"), u.Get("output_tokens"))
+		c.Cached = pick(u.Get("prompt_tokens_details.cached_tokens"), u.Get("input_tokens_details.cached_tokens"))
+	case protocol.Codex:
+		c.Input = pick(u.Get("input_tokens"), u.Get("prompt_tokens"))
+		c.Output = pick(u.Get("output_tokens"), u.Get("completion_tokens"))
+		c.Cached = pick(u.Get("input_tokens_details.cached_tokens"), u.Get("prompt_tokens_details.cached_tokens"))
+	}
+	return c
+}
+
+// pick returns the first non-zero value among the given results (treating a
+// missing or zero field as "absent"), or 0 if none is non-zero. This lets us
+// accept either name a provider uses (e.g. prompt_tokens vs input_tokens).
+func pick(vals ...gjson.Result) int64 {
+	for _, v := range vals {
+		if v.Exists() && v.Int() != 0 {
+			return v.Int()
 		}
 	}
+	return 0
 }

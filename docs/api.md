@@ -223,10 +223,11 @@ curl -H "X-Admin-Key: $PROXY_ADMIN_KEY" http://127.0.0.1:8317/v0/management/usag
            "internal_model":"openai-main/gpt41mini",
            "source_protocol":"openai_completion","target_provider_type":"openai_completion",
            "http_status":200,"requests":12,"failures":0,
-           "input_tokens":234,"output_tokens":567}]}
+           "input_tokens":234,"output_tokens":567,
+           "cache_read_tokens":0,"cache_creation_tokens":0,"cached_tokens":120}]}
 ```
 
-> 由 `proxy.usage_statistics_enabled` 控制是否记录；流式请求的 token 从 SSE 事件（anthropic `message_start`/`message_delta`、codex `response.completed`、openai chunk usage）中抽取。
+> 由 `proxy.usage_statistics_enabled` 控制是否记录。token（含缓存 token）从响应中抽取：流式从 SSE 事件（anthropic `message_start`/`message_delta`、codex `response.completed`、openai chunk usage），非流式从响应体 `usage`。缓存维度：anthropic 取 `cache_read_input_tokens` / `cache_creation_input_tokens`，openai/codex 取 `prompt_tokens_details.cached_tokens`。
 
 ---
 

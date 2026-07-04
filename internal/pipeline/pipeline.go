@@ -16,11 +16,11 @@ import (
 	"github.com/GreenTeodoro839/SimpleAPI/internal/payload"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/protocol"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/reqctx"
+	"github.com/GreenTeodoro839/SimpleAPI/internal/runtime"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/translate"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/usage"
-	"github.com/GreenTeodoro839/SimpleAPI/internal/websearch"
-	"github.com/GreenTeodoro839/SimpleAPI/internal/runtime"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/web"
+	"github.com/GreenTeodoro839/SimpleAPI/internal/websearch"
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 	"github.com/tidwall/gjson"
@@ -170,12 +170,12 @@ func (h *Handler) ServeProxy(c *gin.Context) {
 
 		if isStream {
 			idleTimeout := time.Duration(snap.Config.Server.StreamIdleTimeout()) * time.Second
-			_, cleanComplete, retryable, inTok, outTok := h.attemptStream(c, pe, body, aliasB, rewrite, retryCodes, pair, idleTimeout)
+			_, cleanComplete, retryable, counts := h.attemptStream(c, pe, body, aliasB, rewrite, retryCodes, pair, idleTimeout)
 			streamStatus := 0
 			if !retryable {
 				streamStatus = 200
 			}
-			h.recordUsage(snap, rm, sourceProto, streamStatus, nil, inTok, outTok, retryable || !cleanComplete)
+			h.recordUsage(snap, rm, sourceProto, streamStatus, nil, counts, retryable || !cleanComplete)
 			if retryable {
 				fo.OnFailure(kc.Name, cand.InternalID)
 				h.logger.WithField("model", cand.InternalID).Debug("stream candidate failed; trying next")
@@ -190,7 +190,7 @@ func (h *Handler) ServeProxy(c *gin.Context) {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
 		status, ct, respBytes, retryable := h.attemptNonStream(ctx, pe, body, retryCodes, pair)
 		cancel()
-		h.recordUsage(snap, rm, sourceProto, status, respBytes, 0, 0, retryable)
+		h.recordUsage(snap, rm, sourceProto, status, respBytes, usage.Counts{}, retryable)
 		if retryable {
 			fo.OnFailure(kc.Name, cand.InternalID)
 			h.logger.WithField("model", cand.InternalID).Debug("non-stream candidate failed; trying next")
@@ -216,23 +216,16 @@ func (h *Handler) ServeProxy(c *gin.Context) {
 
 // recordUsage adds one upstream-attempt row to the in-memory usage aggregate,
 // keyed by internal model dimensions (never aliasB). No-op when disabled. For
-// streaming attempts body is nil and inTok/outTok are passed in (mined from the
-// SSE events); for non-stream attempts body is parsed for usage.
-func (h *Handler) recordUsage(snap runtime.Snapshot, rm *indexes.ResolvedModel, sourceProto string, status int, body []byte, inTok, outTok int64, failed bool) {
+// streaming attempts body is nil and mined holds the counts parsed from the SSE
+// events; for non-stream attempts body is parsed for usage (mined is ignored).
+func (h *Handler) recordUsage(snap runtime.Snapshot, rm *indexes.ResolvedModel, sourceProto string, status int, body []byte, mined usage.Counts, failed bool) {
 	if !snap.Config.Proxy.UsageEnabled() {
 		return
 	}
+	counts := mined
 	if body != nil {
-		u := gjson.GetBytes(body, "usage")
-		if u.Exists() {
-			inTok = u.Get("input_tokens").Int()
-			if inTok == 0 {
-				inTok = u.Get("prompt_tokens").Int()
-			}
-			outTok = u.Get("output_tokens").Int()
-			if outTok == 0 {
-				outTok = u.Get("completion_tokens").Int()
-			}
+		if node, ok := usageNodeForBody(body, rm.ProviderType); ok && node.Exists() {
+			counts = parseUsageNode(node, rm.ProviderType)
 		}
 	}
 	h.rt.Usage().Record(usage.Key{
@@ -244,5 +237,5 @@ func (h *Handler) recordUsage(snap runtime.Snapshot, rm *indexes.ResolvedModel, 
 		SourceProtocol:     sourceProto,
 		TargetProviderType: rm.ProviderType,
 		HTTPStatus:         status,
-	}, inTok, outTok, failed)
+	}, counts, failed)
 }
