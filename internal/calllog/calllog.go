@@ -38,6 +38,7 @@ type Entry struct {
 	HTTPStatus     int       `json:"http_status"`
 	LatencyMS      int64     `json:"latency_ms"`
 	Failed         bool      `json:"failed"`
+	Error          string    `json:"error,omitempty"` // failure reason (upstream message / network / timeout / disconnect)
 	Tokens         Tokens    `json:"tokens"`
 }
 

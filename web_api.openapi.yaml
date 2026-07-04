@@ -984,6 +984,9 @@ components:
           type: integer
         failed:
           type: boolean
+        error:
+          type: string
+          description: 失败原因（上游错误消息 / 网络错误 / 超时 / 客户端断开）；仅 failed=true 时存在
         tokens:
           $ref: "#/components/schemas/CallLogTokens"
 

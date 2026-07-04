@@ -249,8 +249,20 @@ curl -H "X-Admin-Key: $PROXY_ADMIN_KEY" \
   "http_status":200,"latency_ms":842,"failed":false,
   "tokens":{"input_tokens":156,"output_tokens":40,
             "cache_read_tokens":120,"cache_creation_tokens":0,
-            "cached_tokens":0,"reasoning_tokens":0,"total_tokens":316}}]}
+            "cached_tokens":0,"reasoning_tokens":0,"total_tokens":316}},
+ {
+  "request_id":"req-8","timestamp":"2026-07-04T22:46:02Z",
+  "endpoint":"POST /v1/messages","api_key":"dev-all",
+  "source_protocol":"anthropic","alias":"claude",
+  "provider":"anthropic-main","provider_type":"anthropic",
+  "model":"claude-sonnet-4-20250514","internal_model":"anthropic-main/sonnet4",
+  "http_status":400,"latency_ms":120,"failed":true,
+  "error":"messages: max_tokens: input_max_tokens: at least `max_tokens` must be ...",
+  "tokens":{"input_tokens":0,"output_tokens":0,"cache_read_tokens":0,
+            "cache_creation_tokens":0,"cached_tokens":0,"reasoning_tokens":0,"total_tokens":0}}]}
 ```
+
+> 失败的尝试带 `failed:true` 和 `error` 字段：上游 HTTP 错误时从响应体（`error.message` / `message` 等常见结构）抽取原因；网络错误/超时为底层错误串；流式中止为 `stream idle timeout` / `client disconnected`。`http_status` 为上游真实状态码（网络错误时为 `0`）。
 
 > 由 `proxy.call_log_max_entries`（默认 1000，`0`=关闭）控制环形缓冲容量；**仅启动时生效，改后需重启**。`api_key` 返回的是入站 key 的 **name**（非密钥明文）。调用记录与 `usage_statistics_enabled` 相互独立。
 

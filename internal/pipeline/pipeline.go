@@ -199,12 +199,8 @@ func (h *Handler) ServeProxy(c *gin.Context) {
 
 		if isStream {
 			idleTimeout := time.Duration(snap.Config.Server.StreamIdleTimeout()) * time.Second
-			_, cleanComplete, retryable, counts := h.attemptStream(c, pe, body, aliasB, rewrite, retryCodes, pair, idleTimeout)
-			streamStatus := 0
-			if !retryable {
-				streamStatus = 200
-			}
-			h.recordUsage(snap, rm, sourceProto, streamStatus, nil, counts, retryable || !cleanComplete, meta)
+			_, cleanComplete, retryable, upStatus, counts, errMsg := h.attemptStream(c, pe, body, aliasB, rewrite, retryCodes, pair, idleTimeout)
+			h.recordUsage(snap, rm, sourceProto, upStatus, nil, counts, retryable || !cleanComplete, meta, errMsg)
 			if retryable {
 				fo.OnFailure(kc.Name, cand.InternalID)
 				h.logger.WithField("model", cand.InternalID).Debug("stream candidate failed; trying next")
@@ -217,9 +213,9 @@ func (h *Handler) ServeProxy(c *gin.Context) {
 		}
 
 		ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
-		status, ct, respBytes, retryable := h.attemptNonStream(ctx, pe, body, retryCodes, pair)
+		status, ct, respBytes, retryable, errMsg := h.attemptNonStream(ctx, pe, body, retryCodes, pair)
 		cancel()
-		h.recordUsage(snap, rm, sourceProto, status, respBytes, usage.Counts{}, retryable, meta)
+		h.recordUsage(snap, rm, sourceProto, status, respBytes, usage.Counts{}, retryable, meta, errMsg)
 		if retryable {
 			fo.OnFailure(kc.Name, cand.InternalID)
 			h.logger.WithField("model", cand.InternalID).Debug("non-stream candidate failed; trying next")
@@ -247,7 +243,7 @@ func (h *Handler) ServeProxy(c *gin.Context) {
 // enabled) and into the call-log ring buffer (when enabled). The two are
 // independent. For streaming attempts body is nil and mined holds the counts
 // parsed from SSE events; for non-stream attempts body is parsed for usage.
-func (h *Handler) recordUsage(snap runtime.Snapshot, rm *indexes.ResolvedModel, sourceProto string, status int, body []byte, mined usage.Counts, failed bool, meta reqMeta) {
+func (h *Handler) recordUsage(snap runtime.Snapshot, rm *indexes.ResolvedModel, sourceProto string, status int, body []byte, mined usage.Counts, failed bool, meta reqMeta, errMsg string) {
 	counts := mined
 	if body != nil {
 		if node, ok := usageNodeForBody(body, rm.ProviderType); ok && node.Exists() {
@@ -283,7 +279,8 @@ func (h *Handler) recordUsage(snap runtime.Snapshot, rm *indexes.ResolvedModel, 
 			InternalModel:  rm.InternalID,
 			HTTPStatus:     status,
 			LatencyMS:      time.Since(meta.start).Milliseconds(),
-			Failed:         failed,
+			Failed:         failed || errMsg != "",
+			Error:          errMsg,
 			Tokens: calllog.Tokens{
 				InputTokens:         counts.Input,
 				OutputTokens:        counts.Output,

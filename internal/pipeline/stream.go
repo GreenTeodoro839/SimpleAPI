@@ -4,8 +4,10 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/GreenTeodoro839/SimpleAPI/internal/indexes"
@@ -22,26 +24,29 @@ import (
 // for connection errors or retryable HTTP statuses (§9). When pair is non-nil
 // and the upstream returned 2xx, the response is translated to the client
 // protocol before return.
-func (h *Handler) attemptNonStream(ctx context.Context, pe *indexes.ProviderEntry, body []byte, retryCodes []int, pair *translate.Pair) (status int, contentType string, respBytes []byte, retryable bool) {
+func (h *Handler) attemptNonStream(ctx context.Context, pe *indexes.ProviderEntry, body []byte, retryCodes []int, pair *translate.Pair) (status int, contentType string, respBytes []byte, retryable bool, errMsg string) {
 	resp, err := provider.Do(ctx, pe, body)
 	if err != nil {
 		h.logger.WithError(err).WithField("provider", pe.Name).Debug("upstream non-stream call failed")
-		return 0, "", nil, true
+		return 0, "", nil, true, err.Error()
 	}
 	defer resp.Body.Close()
 	respBytes, err = io.ReadAll(resp.Body)
 	if err != nil {
-		return 0, "", nil, true
+		return 0, "", nil, true, err.Error()
 	}
 	if provider.IsRetryableStatus(resp.StatusCode, retryCodes) {
-		return resp.StatusCode, resp.Header.Get("Content-Type"), respBytes, true
+		return resp.StatusCode, resp.Header.Get("Content-Type"), respBytes, true, extractErrorMessage(resp.StatusCode, respBytes)
+	}
+	if resp.StatusCode >= 400 {
+		return resp.StatusCode, resp.Header.Get("Content-Type"), respBytes, false, extractErrorMessage(resp.StatusCode, respBytes)
 	}
 	if pair != nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		if translated, terr := pair.Response(respBytes); terr == nil {
 			respBytes = translated
 		}
 	}
-	return resp.StatusCode, resp.Header.Get("Content-Type"), respBytes, false
+	return resp.StatusCode, resp.Header.Get("Content-Type"), respBytes, false, ""
 }
 
 // attemptStream calls the upstream and relays the SSE stream. Unlike non-stream,
@@ -53,18 +58,37 @@ func (h *Handler) attemptNonStream(ctx context.Context, pe *indexes.ProviderEntr
 // with per-chunk model rewriting.
 //
 // Returns committed (bytes written → cannot retry), cleanComplete, retryable,
-// and the accumulated token counts.
-func (h *Handler) attemptStream(c *gin.Context, pe *indexes.ProviderEntry, body []byte, aliasB string, rewrite bool, retryCodes []int, pair *translate.Pair, idleTimeout time.Duration) (committed, cleanComplete, retryable bool, counts usage.Counts) {
+// the upstream HTTP status (0 if the call failed before any response), the
+// accumulated token counts, and an error reason string (empty on success).
+func (h *Handler) attemptStream(c *gin.Context, pe *indexes.ProviderEntry, body []byte, aliasB string, rewrite bool, retryCodes []int, pair *translate.Pair, idleTimeout time.Duration) (committed, cleanComplete, retryable bool, status int, counts usage.Counts, errMsg string) {
 	// No total deadline: the upstream call is bound to the client connection so a
 	// long-but-active stream is never cut, only a stalled one (idleTimeout).
 	resp, err := provider.Do(c.Request.Context(), pe, body)
 	if err != nil {
 		h.logger.WithError(err).WithField("provider", pe.Name).Debug("upstream stream call failed")
-		return false, false, true, usage.Counts{}
+		return false, false, true, 0, usage.Counts{}, err.Error()
 	}
 	defer resp.Body.Close()
+	status = resp.StatusCode
+
 	if provider.IsRetryableStatus(resp.StatusCode, retryCodes) {
-		return false, false, true, usage.Counts{}
+		errBody, _ := io.ReadAll(resp.Body)
+		return false, false, true, resp.StatusCode, usage.Counts{}, extractErrorMessage(resp.StatusCode, errBody)
+	}
+	// Non-2xx non-retryable (e.g. 4xx): the upstream returned an error body
+	// rather than an SSE stream. Forward it to the client and capture the reason.
+	if resp.StatusCode >= 400 {
+		errBody, _ := io.ReadAll(resp.Body)
+		c.Writer.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
+		c.Writer.WriteHeader(resp.StatusCode)
+		_, _ = c.Writer.Write(errBody)
+		if flusher, ok := c.Writer.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		committed = true
+		cleanComplete = true
+		errMsg = extractErrorMessage(resp.StatusCode, errBody)
+		return
 	}
 
 	var acc usage.Counts
@@ -185,15 +209,18 @@ func (h *Handler) attemptStream(c *gin.Context, pe *indexes.ProviderEntry, body 
 			if sig.err != nil {
 				if sig.err != io.EOF {
 					cleanComplete = false
+					errMsg = sig.err.Error()
 				}
 				return
 			}
 		case <-idleC:
 			cleanComplete = false
+			errMsg = "stream idle timeout"
 			h.logger.WithField("provider", pe.Name).Debug("stream idle timeout")
 			return
 		case <-c.Request.Context().Done():
 			cleanComplete = false
+			errMsg = "client disconnected"
 			return
 		}
 	}
@@ -335,4 +362,33 @@ func pick(vals ...gjson.Result) int64 {
 		}
 	}
 	return 0
+}
+
+// extractErrorMessage pulls a concise human-readable reason out of an upstream
+// error body. It tries the common JSON error shapes ({error:{message}},
+// {message}, {error:"..."}, {detail}, {msg}) before falling back to a
+// truncated raw body, then to "upstream returned HTTP <status>".
+func extractErrorMessage(status int, body []byte) string {
+	if len(body) > 0 && gjson.ValidBytes(body) {
+		for _, p := range []string{"error.message", "message", "error", "detail", "msg"} {
+			if v := gjson.GetBytes(body, p); v.Exists() && v.Type == gjson.String {
+				return truncateMessage(v.String())
+			}
+		}
+	}
+	if s := strings.TrimSpace(string(body)); s != "" {
+		return truncateMessage(s)
+	}
+	if status > 0 {
+		return fmt.Sprintf("upstream returned HTTP %d", status)
+	}
+	return "upstream call failed"
+}
+
+func truncateMessage(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) > 500 {
+		return s[:500] + "..."
+	}
+	return s
 }
