@@ -1,0 +1,27 @@
+name: dev-build
+
+# Every push to a branch builds a Linux/amd64 dev binary and publishes it as a
+# workflow artifact (downloadable from the Actions run). Tag pushes are excluded.
+on:
+  push:
+    branches: ['**']
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build
+        env:
+          CGO_ENABLED: '0'
+        run: go build -trimpath -ldflags="-s -w" -o proxy ./cmd/proxy
+      - name: Archive
+        run: tar czf "proxy-dev-linux-amd64-${GITHUB_SHA::7}.tar.gz" proxy
+      - uses: actions/upload-artifact@v4
+        with:
+          name: proxy-dev-linux-amd64
+          path: proxy-dev-linux-amd64-*.tar.gz
+          retention-days: 30
