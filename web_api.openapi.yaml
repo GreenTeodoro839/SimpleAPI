@@ -160,11 +160,11 @@ paths:
                     type: string
                     example: ok
 
-  /-/api/config:
+  /v0/management/config:
     get:
       tags: [Management]
       summary: 获取当前配置
-      description: 返回脱敏后的当前配置。key 字段默认不返回明文。
+      description: 返回当前完整配置，含明文 key 字段（不脱敏）。
       security:
         - AdminKeyAuth: []
       responses:
@@ -204,7 +204,7 @@ paths:
         "422":
           $ref: "#/components/responses/ValidationFailed"
 
-  /-/api/validate:
+  /v0/management/validate:
     post:
       tags: [Management]
       summary: 校验配置但不写入
@@ -229,7 +229,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
-  /-/api/payload:
+  /v0/management/payload:
     get:
       tags: [Management]
       summary: 获取 payload 规则配置
@@ -271,7 +271,7 @@ paths:
         "422":
           $ref: "#/components/responses/ValidationFailed"
 
-  /-/api/reload:
+  /v0/management/reload:
     post:
       tags: [Management]
       summary: 从 config.yaml 重新加载配置
@@ -291,7 +291,7 @@ paths:
         "422":
           $ref: "#/components/responses/ValidationFailed"
 
-  /-/api/providers:
+  /v0/management/providers:
     get:
       tags: [Management]
       summary: 获取 provider 列表
@@ -328,7 +328,7 @@ paths:
         "422":
           $ref: "#/components/responses/ValidationFailed"
 
-  /-/api/providers/{name}:
+  /v0/management/providers/{name}:
     get:
       tags: [Management]
       summary: 获取单个 provider
@@ -378,11 +378,11 @@ paths:
         "422":
           $ref: "#/components/responses/ValidationFailed"
 
-  /-/api/api-keys:
+  /v0/management/api-keys:
     get:
       tags: [Management]
       summary: 获取入站 API key 配置列表
-      description: 默认脱敏 key 字段。
+      description: 含明文 key 字段（不脱敏）。
       security:
         - AdminKeyAuth: []
       responses:
@@ -415,7 +415,7 @@ paths:
         "422":
           $ref: "#/components/responses/ValidationFailed"
 
-  /-/api/api-keys/{keyName}:
+  /v0/management/api-keys/{keyName}:
     get:
       tags: [Management]
       summary: 获取单个入站 API key 配置
@@ -461,7 +461,7 @@ paths:
         "204":
           description: 已删除。
 
-  /-/api/models:
+  /v0/management/models:
     get:
       tags: [Management]
       summary: 获取内部模型索引
@@ -482,7 +482,7 @@ paths:
                     items:
                       $ref: "#/components/schemas/InternalModel"
 
-  /-/api/usage:
+  /v0/management/usage:
     get:
       tags: [Management]
       summary: 获取内存使用统计
@@ -655,10 +655,10 @@ components:
           default: true
         base_path:
           type: string
-          default: "/-/api"
+          default: "/v0/management"
         admin_key:
           type: string
-          description: 可使用环境变量占位符，GET 配置时应脱敏。
+          description: 可使用环境变量占位符。
 
     PayloadConfig:
       type: object
@@ -791,7 +791,7 @@ components:
           description: 上游 base URL。
         key:
           type: string
-          description: 上游 API key，可为空；GET 配置时应脱敏。
+          description: 上游 API key，可为空。
         headers:
           type: object
           additionalProperties:
@@ -837,7 +837,7 @@ components:
           description: 管理 API 使用的 key 配置名，全局唯一。
         key:
           type: string
-          description: 入站 API key，GET 配置时应脱敏。
+          description: 入站 API key。
         allowed_protocols:
           type: array
           items:

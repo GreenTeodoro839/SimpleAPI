@@ -1,5 +1,5 @@
 // Package config holds the YAML configuration model for the proxy, plus loading,
-// environment-variable expansion, validation, atomic file writes, and redaction.
+// environment-variable expansion, validation, and atomic file writes.
 //
 // The Go types in this file map one-to-one to config.yaml (DEVELOPMENT.md §4).
 // Fields with non-zero defaults (or where zero is a meaningful explicit value,
@@ -87,7 +87,7 @@ func (p ProxyConfig) RetryCodes() []int {
 type ManagementConfig struct {
 	Enabled  *bool  `yaml:"enabled"    json:"enabled"`
 	BasePath string `yaml:"base_path"  json:"base_path"`
-	AdminKey string `yaml:"admin_key"  json:"admin_key"` // expanded at load; redacted on GET
+	AdminKey string `yaml:"admin_key"  json:"admin_key"` // expanded at load
 }
 
 func (m ManagementConfig) IsEnabled() bool {
@@ -100,7 +100,7 @@ func (m ManagementConfig) Base() string {
 	if m.BasePath != "" {
 		return m.BasePath
 	}
-	return "/-/api"
+	return "/v0/management"
 }
 
 // PayloadConfig holds the five ordered outbound-payload rule lists (§11).
@@ -140,12 +140,12 @@ type PayloadModelRule struct {
 }
 
 // Provider is one upstream provider. Name and URL are required; Name must not
-// contain '_'. Each provider has exactly one key.
+// contain '/' (it forms the internal id "name/aliasA"). Each provider has exactly one key.
 type Provider struct {
 	Name    string            `yaml:"name"    json:"name"`
 	Type    string            `yaml:"type"    json:"type"`
 	URL     string            `yaml:"url"     json:"url"`
-	Key     string            `yaml:"key"     json:"key"` // expanded at load; redacted on GET
+	Key     string            `yaml:"key"     json:"key"` // expanded at load
 	Headers map[string]string `yaml:"headers" json:"headers"`
 	Models  []ProviderModel   `yaml:"models"  json:"models"`
 }
@@ -166,7 +166,7 @@ type WebSearchForward struct {
 // ClientApiKey is one inbound API key with its protocol and model authorization.
 type ClientApiKey struct {
 	Name             string        `yaml:"name"              json:"name"`
-	Key              string        `yaml:"key"               json:"key"` // expanded at load; redacted on GET
+	Key              string        `yaml:"key"               json:"key"` // expanded at load
 	AllowedProtocols []string      `yaml:"allowed_protocols" json:"allowed_protocols"`
 	Models           []ClientModel `yaml:"models"            json:"models"`
 }

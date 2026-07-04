@@ -38,7 +38,7 @@ func New(raw, cfg *config.Config, idx *indexes.Indexes, cfgPath string) *Runtime
 
 // Snapshot is an immutable point-in-time view.
 type Snapshot struct {
-	Raw     *config.Config     // placeholder form (management base / redact source)
+	Raw     *config.Config     // placeholder form (raw, pre-expansion config; returned verbatim by management GET)
 	Config  *config.Config     // expanded form (proxy runtime settings)
 	Indexes *indexes.Indexes
 }

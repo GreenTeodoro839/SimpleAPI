@@ -49,7 +49,7 @@ func (h *Handler) Register(rg *gin.RouterGroup) {
 
 func (h *Handler) getConfig(c *gin.Context) {
 	snap := h.rt.Snapshot()
-	c.JSON(http.StatusOK, config.Redact(snap.Raw))
+	c.JSON(http.StatusOK, config.DeepCopy(snap.Raw))
 }
 
 func (h *Handler) putConfig(c *gin.Context) {

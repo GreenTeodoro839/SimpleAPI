@@ -11,7 +11,7 @@ import (
 
 func (h *Handler) listAPIKeys(c *gin.Context) {
 	snap := h.rt.Snapshot()
-	r := config.Redact(snap.Raw)
+	r := config.DeepCopy(snap.Raw)
 	c.JSON(http.StatusOK, gin.H{"api_keys": r.APIKeys})
 }
 
@@ -36,9 +36,7 @@ func (h *Handler) getAPIKey(c *gin.Context) {
 	snap := h.rt.Snapshot()
 	for _, k := range snap.Raw.APIKeys {
 		if k.Name == name {
-			out := k
-			out.Key = ""
-			c.JSON(http.StatusOK, out)
+			c.JSON(http.StatusOK, k)
 			return
 		}
 	}

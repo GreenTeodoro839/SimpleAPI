@@ -4,7 +4,7 @@
 #
 # 下面 server / proxy / management 是可运行的骨架；payload / providers / api_keys
 # 默认全部注释，即开箱不提供任何模型与密钥——请按需取消注释并改成你自己的值，
-# 或启动后通过管理 API（/-/api，需 X-Admin-Key）在线增改。
+# 或启动后通过管理 API（/v0/management，需 X-Admin-Key）在线增改。
 
 version: 1
 
@@ -24,8 +24,8 @@ proxy:
 
 management:
   enabled: true
-  base_path: "/-/api"                 # 管理接口前缀
-  admin_key: "${PROXY_ADMIN_KEY}"     # 管理密钥，GET 配置时会脱敏
+  base_path: "/v0/management"         # 管理接口前缀
+  admin_key: "${PROXY_ADMIN_KEY}"     # 管理密钥（GET 配置时原样返回，不脱敏）
 
 # ---------------------------------------------------------------------------
 # payload：出站请求体改写规则，按固定顺序生效：

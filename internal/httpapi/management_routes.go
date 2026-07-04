@@ -8,7 +8,7 @@ import (
 )
 
 // registerManagementRoutes wires the management API under its configured base
-// path (default /-/api), behind admin-key auth. Health stays unauthenticated
+// path (default /v0/management), behind admin-key auth. Health stays unauthenticated
 // and is registered separately in server.go. No-op when management is disabled.
 func registerManagementRoutes(g *gin.Engine, rt *runtime.Runtime, logger *logrus.Logger) {
 	snap := rt.Snapshot()
@@ -17,7 +17,7 @@ func registerManagementRoutes(g *gin.Engine, rt *runtime.Runtime, logger *logrus
 	}
 	base := snap.Config.Management.Base()
 	if base == "" {
-		base = "/-/api"
+		base = "/v0/management"
 	}
 	h := management.NewHandler(rt, logger)
 	rg := g.Group(base, management.AdminKeyAuth(rt))

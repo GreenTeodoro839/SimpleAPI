@@ -52,7 +52,7 @@ type Indexes struct {
 	Models        map[string]*ResolvedModel
 	Keys          map[string]*KeyContext // expanded key string -> context
 	KeyByName     map[string]*KeyContext
-	InternalIDs   []string // sorted, for /-/api/models
+	InternalIDs   []string // sorted, for /v0/management/models
 }
 
 // Build constructs Indexes from a config that has already passed Validate.

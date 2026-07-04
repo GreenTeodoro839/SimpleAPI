@@ -95,7 +95,7 @@ curl -H "Authorization: Bearer $CLIENT_API_KEY" http://127.0.0.1:8317/v1/models
 
 ## 4. 管理接口
 
-基础路径由 `management.base_path` 决定（默认 `/-/api`）。下面示例假设默认值。所有写接口都会先做完整配置校验：通过则原子写回 `config.yaml` 并重建运行时索引；失败返回 `422`，**不写文件、不生效**。
+基础路径由 `management.base_path` 决定（默认 `/v0/management`）。下面示例假设默认值。所有写接口都会先做完整配置校验：通过则原子写回 `config.yaml` 并重建运行时索引；失败返回 `422`，**不写文件、不生效**。
 
 校验/写入结果统一返回：
 
@@ -121,86 +121,86 @@ curl http://127.0.0.1:8317/-/health        # {"status":"ok"}
 
 ### 配置整体
 
-- `GET /-/api/config` —— 返回脱敏后的完整配置（`providers[].key`、`api_keys[].key`、`management.admin_key` 置空）。
+- `GET /v0/management/config` —— 返回完整配置（含明文 `providers[].key`、`api_keys[].key`、`management.admin_key`，不脱敏）。
 
 ```bash
-curl -H "X-Admin-Key: $PROXY_ADMIN_KEY" http://127.0.0.1:8317/-/api/config
+curl -H "X-Admin-Key: $PROXY_ADMIN_KEY" http://127.0.0.1:8317/v0/management/config
 ```
 
-- `PUT /-/api/config` —— 用请求体整体替换配置（接受 JSON 或 YAML）。
+- `PUT /v0/management/config` —— 用请求体整体替换配置（接受 JSON 或 YAML）。
 
 ```bash
 curl -X PUT -H "X-Admin-Key: $PROXY_ADMIN_KEY" -H "Content-Type: application/json" \
-  --data-binary @config.json http://127.0.0.1:8317/-/api/config
+  --data-binary @config.json http://127.0.0.1:8317/v0/management/config
 ```
 
-- `POST /-/api/validate` —— 只校验、不写入。
+- `POST /v0/management/validate` —— 只校验、不写入。
 
 ```bash
 curl -X POST -H "X-Admin-Key: $PROXY_ADMIN_KEY" -H "Content-Type: application/json" \
-  --data-binary @config.json http://127.0.0.1:8317/-/api/validate
+  --data-binary @config.json http://127.0.0.1:8317/v0/management/validate
 ```
 
-- `POST /-/api/reload` —— 重新读取磁盘上的 `config.yaml` 并校验；失败则保持当前运行配置不变、返回 `422`。
+- `POST /v0/management/reload` —— 重新读取磁盘上的 `config.yaml` 并校验；失败则保持当前运行配置不变、返回 `422`。
 
 ```bash
-curl -X POST -H "X-Admin-Key: $PROXY_ADMIN_KEY" http://127.0.0.1:8317/-/api/reload
+curl -X POST -H "X-Admin-Key: $PROXY_ADMIN_KEY" http://127.0.0.1:8317/v0/management/reload
 ```
 
 ### Payload 规则
 
-- `GET /-/api/payload` —— 返回当前 `payload` 节。
-- `PUT /-/api/payload` —— 替换 `payload` 节（会合成完整配置后整体校验；raw 值必须是合法 JSON 片段，且不得改写/删除顶层 `model` 字段）。
+- `GET /v0/management/payload` —— 返回当前 `payload` 节。
+- `PUT /v0/management/payload` —— 替换 `payload` 节（会合成完整配置后整体校验；raw 值必须是合法 JSON 片段，且不得改写/删除顶层 `model` 字段）。
 
 ```bash
 curl -X PUT -H "X-Admin-Key: $PROXY_ADMIN_KEY" -H "Content-Type: application/json" \
   -d '{"override":[{"models":[{"name":"openai-main/gpt41mini"}],
                     "params":{"temperature":0.2}}]}' \
-  http://127.0.0.1:8317/-/api/payload
+  http://127.0.0.1:8317/v0/management/payload
 ```
 
 ### Providers
 
-- `GET /-/api/providers` —— provider 列表（脱敏）。
-- `POST /-/api/providers` —— 新增 provider；重复 `name` 或同 provider 下重复 `aliasA` 返回 `422`。
+- `GET /v0/management/providers` —— provider 列表（含明文 key）。
+- `POST /v0/management/providers` —— 新增 provider；重复 `name` 或同 provider 下重复 `aliasA` 返回 `422`。
 
 ```bash
 curl -X POST -H "X-Admin-Key: $PROXY_ADMIN_KEY" -H "Content-Type: application/json" \
   -d '{"name":"openrouter","type":"openai_completion","url":"https://openrouter.ai/api/v1",
        "key":"sk-...","headers":{},"models":[{"model":"m","aliasA":"a"}]}' \
-  http://127.0.0.1:8317/-/api/providers
+  http://127.0.0.1:8317/v0/management/providers
 ```
 
-- `GET /-/api/providers/:name` —— 单个 provider（脱敏）；不存在返回 `404`。
-- `PUT /-/api/providers/:name` —— 替换单个 provider。
-- `DELETE /-/api/providers/:name` —— 删除；若仍有 API key 引用该 provider 的模型，返回 `422 provider_in_use`。
+- `GET /v0/management/providers/:name` —— 单个 provider（含明文 key）；不存在返回 `404`。
+- `PUT /v0/management/providers/:name` —— 替换单个 provider。
+- `DELETE /v0/management/providers/:name` —— 删除；若仍有 API key 引用该 provider 的模型，返回 `422 provider_in_use`。
 
 ```bash
-curl -X DELETE -H "X-Admin-Key: $PROXY_ADMIN_KEY" http://127.0.0.1:8317/-/api/providers/openrouter
+curl -X DELETE -H "X-Admin-Key: $PROXY_ADMIN_KEY" http://127.0.0.1:8317/v0/management/providers/openrouter
 ```
 
 ### API Keys
 
-- `GET /-/api/api-keys` —— 入站 key 列表（脱敏）。
-- `POST /-/api/api-keys` —— 新增；重复 `name` 或重复 key 值返回 `422`。
-- `GET /-/api/api-keys/:keyName` / `PUT /-/api/api-keys/:keyName` / `DELETE /-/api/api-keys/:keyName`
+- `GET /v0/management/api-keys` —— 入站 key 列表（含明文 key）。
+- `POST /v0/management/api-keys` —— 新增；重复 `name` 或重复 key 值返回 `422`。
+- `GET /v0/management/api-keys/:keyName` / `PUT /v0/management/api-keys/:keyName` / `DELETE /v0/management/api-keys/:keyName`
 
 ```bash
 curl -X POST -H "X-Admin-Key: $PROXY_ADMIN_KEY" -H "Content-Type: application/json" \
   -d '{"name":"dev","key":"${CLIENT_API_KEY_DEV}",
        "allowed_protocols":["anthropic","openai_completion","codex"],
        "models":[{"model":"openai-main/gpt41mini","aliasB":"gpt-mini"}]}' \
-  http://127.0.0.1:8317/-/api/api-keys
+  http://127.0.0.1:8317/v0/management/api-keys
 ```
 
 > `:name` / `:keyName` 路径参数不应包含 `/`。
 
 ### 内部模型索引
 
-- `GET /-/api/models` —— 以 internal id（`providerName/aliasA`）为维度的模型列表。
+- `GET /v0/management/models` —— 以 internal id（`providerName/aliasA`）为维度的模型列表。
 
 ```bash
-curl -H "X-Admin-Key: $PROXY_ADMIN_KEY" http://127.0.0.1:8317/-/api/models
+curl -H "X-Admin-Key: $PROXY_ADMIN_KEY" http://127.0.0.1:8317/v0/management/models
 ```
 
 ```json
@@ -211,10 +211,10 @@ curl -H "X-Admin-Key: $PROXY_ADMIN_KEY" http://127.0.0.1:8317/-/api/models
 
 ### 用量统计
 
-- `GET /-/api/usage` —— 内存统计，按内部维度聚合（**不**含 `aliasB`）。重启丢失。
+- `GET /v0/management/usage` —— 内存统计，按内部维度聚合（**不**含 `aliasB`）。重启丢失。
 
 ```bash
-curl -H "X-Admin-Key: $PROXY_ADMIN_KEY" http://127.0.0.1:8317/-/api/usage
+curl -H "X-Admin-Key: $PROXY_ADMIN_KEY" http://127.0.0.1:8317/v0/management/usage
 ```
 
 ```json

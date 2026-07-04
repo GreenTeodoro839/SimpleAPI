@@ -11,7 +11,7 @@ import (
 
 func (h *Handler) listProviders(c *gin.Context) {
 	snap := h.rt.Snapshot()
-	r := config.Redact(snap.Raw)
+	r := config.DeepCopy(snap.Raw)
 	c.JSON(http.StatusOK, gin.H{"providers": r.Providers})
 }
 
@@ -36,9 +36,7 @@ func (h *Handler) getProvider(c *gin.Context) {
 	snap := h.rt.Snapshot()
 	for _, p := range snap.Raw.Providers {
 		if p.Name == name {
-			out := p
-			out.Key = ""
-			c.JSON(http.StatusOK, out)
+			c.JSON(http.StatusOK, p)
 			return
 		}
 	}
