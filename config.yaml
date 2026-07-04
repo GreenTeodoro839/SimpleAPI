@@ -21,6 +21,7 @@ proxy:
   rewrite_response_model: true        # 把响应里的 model 改回客户端可见的 aliasB
   usage_statistics_enabled: true      # 内存统计（仅按 provider/aliasA/internal id 聚合，不含 aliasB）
   upstream_retry_status_codes: [408, 429, 500, 502, 503, 504]  # 视为上游失败、触发切换的状态码
+  call_log_max_entries: 1000          # 调用记录环形缓冲容量（GET /v0/management/call-log）；0=关闭。仅启动时生效，改后需重启
 
 management:
   enabled: true

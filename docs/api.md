@@ -224,10 +224,35 @@ curl -H "X-Admin-Key: $PROXY_ADMIN_KEY" http://127.0.0.1:8317/v0/management/usag
            "source_protocol":"openai_completion","target_provider_type":"openai_completion",
            "http_status":200,"requests":12,"failures":0,
            "input_tokens":234,"output_tokens":567,
-           "cache_read_tokens":0,"cache_creation_tokens":0,"cached_tokens":120}]}
+           "cache_read_tokens":0,"cache_creation_tokens":0,"cached_tokens":120,
+           "reasoning_tokens":48,"total_tokens":801}]}
 ```
 
-> 由 `proxy.usage_statistics_enabled` 控制是否记录。token（含缓存 token）从响应中抽取：流式从 SSE 事件（anthropic `message_start`/`message_delta`、codex `response.completed`、openai chunk usage），非流式从响应体 `usage`。缓存维度：anthropic 取 `cache_read_input_tokens` / `cache_creation_input_tokens`，openai/codex 取 `prompt_tokens_details.cached_tokens`。
+> 由 `proxy.usage_statistics_enabled` 控制是否记录。token（含缓存/推理 token）从响应中抽取：流式从 SSE 事件（anthropic `message_start`/`message_delta`、codex `response.completed`、openai chunk usage），非流式从响应体 `usage`。维度：anthropic 取 `cache_read_input_tokens` / `cache_creation_input_tokens`；openai/codex 取 `prompt_tokens_details.cached_tokens` 与 `*_details.reasoning_tokens`；`total_tokens` 优先取上游上报值，缺省时按 input+output(+cache) 推算。
+
+### 调用记录
+
+- `GET /v0/management/call-log` —— 最近 N 条上游调用记录（每条=一次上游尝试；同一次客户端请求因失败切换会产生多条，共享同一 `request_id`）。按时间倒序，**非破坏性**读取（不删除记录）。内存环形缓冲，重启丢失。
+
+```bash
+curl -H "X-Admin-Key: $PROXY_ADMIN_KEY" \
+  'http://127.0.0.1:8317/v0/management/call-log?limit=20'
+```
+
+```json
+{"items":[{
+  "request_id":"req-7","timestamp":"2026-07-04T22:45:10Z",
+  "endpoint":"POST /v1/messages","api_key":"dev-all",
+  "source_protocol":"anthropic","alias":"claude",
+  "provider":"anthropic-main","provider_type":"anthropic",
+  "model":"claude-sonnet-4-20250514","internal_model":"anthropic-main/sonnet4",
+  "http_status":200,"latency_ms":842,"failed":false,
+  "tokens":{"input_tokens":156,"output_tokens":40,
+            "cache_read_tokens":120,"cache_creation_tokens":0,
+            "cached_tokens":0,"reasoning_tokens":0,"total_tokens":316}}]}
+```
+
+> 由 `proxy.call_log_max_entries`（默认 1000，`0`=关闭）控制环形缓冲容量；**仅启动时生效，改后需重启**。`api_key` 返回的是入站 key 的 **name**（非密钥明文）。调用记录与 `usage_statistics_enabled` 相互独立。
 
 ---
 

@@ -30,6 +30,8 @@ type Item struct {
 	CacheReadTokens     int64 `json:"cache_read_tokens"`     // anthropic cache_read_input_tokens
 	CacheCreationTokens int64 `json:"cache_creation_tokens"` // anthropic cache_creation_input_tokens
 	CachedTokens        int64 `json:"cached_tokens"`         // openai/codex prompt_tokens_details.cached_tokens
+	ReasoningTokens     int64 `json:"reasoning_tokens"`      // openai/codex *_details.reasoning_tokens
+	TotalTokens         int64 `json:"total_tokens"`
 }
 
 // Counts holds the token counters extracted from one upstream attempt. It is
@@ -40,11 +42,13 @@ type Counts struct {
 	CacheRead     int64 // anthropic cache_read_input_tokens
 	CacheCreation int64 // anthropic cache_creation_input_tokens
 	Cached        int64 // openai/codex prompt_tokens_details.cached_tokens
+	Reasoning     int64 // openai/codex *_details.reasoning_tokens
+	Total         int64 // reported total_tokens, or derived (see finalizeCounts)
 }
 
 type agg struct {
-	requests, failures                              int64
-	input, output, cacheRead, cacheCreation, cached int64
+	requests, failures                                                int64
+	input, output, cacheRead, cacheCreation, cached, reasoning, total int64
 }
 
 // Recorder is a thread-safe in-memory usage aggregator.
@@ -75,6 +79,8 @@ func (r *Recorder) Record(k Key, c Counts, failed bool) {
 	a.cacheRead += c.CacheRead
 	a.cacheCreation += c.CacheCreation
 	a.cached += c.Cached
+	a.reasoning += c.Reasoning
+	a.total += c.Total
 }
 
 // Snapshot returns all aggregated rows, sorted for stable output.
@@ -92,6 +98,8 @@ func (r *Recorder) Snapshot() []Item {
 			CacheReadTokens:     a.cacheRead,
 			CacheCreationTokens: a.cacheCreation,
 			CachedTokens:        a.cached,
+			ReasoningTokens:     a.reasoning,
+			TotalTokens:         a.total,
 		})
 	}
 	sort.Slice(out, func(i, j int) bool {

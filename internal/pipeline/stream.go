@@ -233,6 +233,12 @@ func accumulateUsage(payload []byte, upstreamType string, acc *usage.Counts) {
 	if c.Cached > acc.Cached {
 		acc.Cached = c.Cached
 	}
+	if c.Reasoning > acc.Reasoning {
+		acc.Reasoning = c.Reasoning
+	}
+	if c.Total > acc.Total {
+		acc.Total = c.Total
+	}
 }
 
 // usageNodeForEvent locates the usage JSON object in one SSE data payload for the
@@ -286,16 +292,37 @@ func parseUsageNode(u gjson.Result, upstreamType string) usage.Counts {
 		c.Output = u.Get("output_tokens").Int()
 		c.CacheRead = u.Get("cache_read_input_tokens").Int()
 		c.CacheCreation = u.Get("cache_creation_input_tokens").Int()
+		// Anthropic reports no total; finalizeCounts derives it from the others.
 	case protocol.OpenAICompletion:
 		c.Input = pick(u.Get("prompt_tokens"), u.Get("input_tokens"))
 		c.Output = pick(u.Get("completion_tokens"), u.Get("output_tokens"))
 		c.Cached = pick(u.Get("prompt_tokens_details.cached_tokens"), u.Get("input_tokens_details.cached_tokens"))
+		c.Reasoning = pick(u.Get("completion_tokens_details.reasoning_tokens"), u.Get("output_tokens_details.reasoning_tokens"))
+		c.Total = u.Get("total_tokens").Int()
 	case protocol.Codex:
 		c.Input = pick(u.Get("input_tokens"), u.Get("prompt_tokens"))
 		c.Output = pick(u.Get("output_tokens"), u.Get("completion_tokens"))
 		c.Cached = pick(u.Get("input_tokens_details.cached_tokens"), u.Get("prompt_tokens_details.cached_tokens"))
+		c.Reasoning = pick(u.Get("output_tokens_details.reasoning_tokens"), u.Get("completion_tokens_details.reasoning_tokens"))
+		c.Total = u.Get("total_tokens").Int()
 	}
 	return c
+}
+
+// finalizeCounts fills Total when the upstream did not report one (Anthropic
+// never does; some OpenAI/codex responses omit it). For Anthropic the total is
+// input+output+cache*; for OpenAI/codex it falls back to input+output. Cached
+// (an OpenAI subset of input) and reasoning (a subset of output) are not added
+// back in, to avoid double counting.
+func finalizeCounts(c *usage.Counts, upstreamType string) {
+	if c.Total > 0 {
+		return
+	}
+	if upstreamType == protocol.Anthropic {
+		c.Total = c.Input + c.Output + c.CacheRead + c.CacheCreation
+	} else {
+		c.Total = c.Input + c.Output
+	}
 }
 
 // pick returns the first non-zero value among the given results (treating a

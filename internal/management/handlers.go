@@ -3,6 +3,7 @@ package management
 import (
 	"io"
 	"net/http"
+	"strconv"
 
 	"github.com/GreenTeodoro839/SimpleAPI/internal/config"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/indexes"
@@ -43,6 +44,7 @@ func (h *Handler) Register(rg *gin.RouterGroup) {
 	rg.DELETE("/api-keys/:keyName", h.deleteAPIKey)
 	rg.GET("/models", h.listModels)
 	rg.GET("/usage", h.getUsage)
+	rg.GET("/call-log", h.getCallLog)
 }
 
 // ---- config ----
@@ -150,6 +152,21 @@ func (h *Handler) listModels(c *gin.Context) {
 
 func (h *Handler) getUsage(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": h.rt.Usage().Snapshot()})
+}
+
+// ---- call log ----
+
+// getCallLog returns the most recent upstream-attempt records (newest first),
+// up to ?limit=N (default 100). Unlike CLIProxyAPI's usage-queue this is a
+// non-destructive read of an in-memory ring buffer: records are not removed.
+func (h *Handler) getCallLog(c *gin.Context) {
+	limit := 100
+	if v := c.Query("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"items": h.rt.CallLog().Recent(limit)})
 }
 
 func readBody(c *gin.Context) ([]byte, error) {

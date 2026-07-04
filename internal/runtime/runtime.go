@@ -7,6 +7,7 @@ package runtime
 import (
 	"sync"
 
+	"github.com/GreenTeodoro839/SimpleAPI/internal/calllog"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/config"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/failover"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/indexes"
@@ -15,13 +16,14 @@ import (
 
 type Runtime struct {
 	mu      sync.RWMutex
-	raw     *config.Config       // placeholders; on-disk representation
-	cfg     *config.Config       // expanded; runtime
+	raw     *config.Config // placeholders; on-disk representation
+	cfg     *config.Config // expanded; runtime
 	indexes *indexes.Indexes
 	cfgPath string
 
 	failover *failover.Counter
 	usage    *usage.Recorder
+	callLog  *calllog.Recorder
 }
 
 // New constructs a Runtime from the raw (placeholder) and expanded configs.
@@ -33,13 +35,14 @@ func New(raw, cfg *config.Config, idx *indexes.Indexes, cfgPath string) *Runtime
 		cfgPath:  cfgPath,
 		failover: failover.New(),
 		usage:    usage.NewRecorder(),
+		callLog:  calllog.NewRecorder(cfg.Proxy.CallLogMax()),
 	}
 }
 
 // Snapshot is an immutable point-in-time view.
 type Snapshot struct {
-	Raw     *config.Config     // placeholder form (raw, pre-expansion config; returned verbatim by management GET)
-	Config  *config.Config     // expanded form (proxy runtime settings)
+	Raw     *config.Config // placeholder form (raw, pre-expansion config; returned verbatim by management GET)
+	Config  *config.Config // expanded form (proxy runtime settings)
 	Indexes *indexes.Indexes
 }
 
@@ -58,6 +61,7 @@ func (r *Runtime) Replace(raw, cfg *config.Config, idx *indexes.Indexes) {
 	r.indexes = idx
 }
 
-func (r *Runtime) ConfigPath() string   { return r.cfgPath }
+func (r *Runtime) ConfigPath() string          { return r.cfgPath }
 func (r *Runtime) Failover() *failover.Counter { return r.failover }
-func (r *Runtime) Usage() *usage.Recorder { return r.usage }
+func (r *Runtime) Usage() *usage.Recorder      { return r.usage }
+func (r *Runtime) CallLog() *calllog.Recorder  { return r.callLog }

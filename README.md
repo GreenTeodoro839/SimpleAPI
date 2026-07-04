@@ -16,8 +16,9 @@
 - **按 API key 授权**：每个入站 key 单独配置允许的协议与模型；同一 `aliasB` 可挂多个候选，按 `priority` 排序，连续失败自动切换。
 - **Payload 规则**：`default / default-raw / override / override-raw / filter` 五类，按 internal id / 协议 / 请求头 / payload 内容匹配，用 JSON path 改写出站请求体。
 - **Anthropic web_search 透明转发**：带 `web_search_*` 工具的请求可转发到指定 target 模型。
-- **管理 API**：在线增删改 provider / key / payload、整体替换配置、reload、查看 usage，原子写回 `config.yaml` 并热生效。
-- **内存用量统计**：按 provider / `aliasA` / internal id 聚合（**不**用 `aliasB`），重启丢失。
+- **管理 API**：在线增删改 provider / key / payload、整体替换配置、reload、查看 usage 与调用记录，原子写回 `config.yaml` 并热生效。
+- **内存用量统计**：按 provider / `aliasA` / internal id 聚合（**不**用 `aliasB`），含缓存/推理/总 token 维度，重启丢失。
+- **调用记录**：最近的每条上游尝试（含 token 明细、延迟、状态、`request_id`），内存环形缓冲，重启丢失。
 
 ## 模型身份
 

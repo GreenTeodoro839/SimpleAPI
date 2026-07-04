@@ -31,6 +31,7 @@ func (s ServerConfig) RequestTimeout() int {
 	}
 	return 600
 }
+
 // StreamIdleTimeout returns the stream idle timeout in seconds. The default is 0
 // (disabled): streams are bounded only by the client connection lifetime and
 // never aborted on idle, so a slow or intermittently-stalled upstream is never
@@ -50,6 +51,7 @@ type ProxyConfig struct {
 	RewriteResponseModel     *bool `yaml:"rewrite_response_model"       json:"rewrite_response_model"`
 	UsageStatisticsEnabled   *bool `yaml:"usage_statistics_enabled"     json:"usage_statistics_enabled"`
 	UpstreamRetryStatusCodes []int `yaml:"upstream_retry_status_codes"  json:"upstream_retry_status_codes"`
+	CallLogMaxEntries        *int  `yaml:"call_log_max_entries"          json:"call_log_max_entries"`
 }
 
 func (p ProxyConfig) MaxFailures() int {
@@ -81,6 +83,16 @@ func (p ProxyConfig) RetryCodes() []int {
 		return p.UpstreamRetryStatusCodes
 	}
 	return []int{408, 429, 500, 502, 503, 504}
+}
+
+// CallLogMax returns the call-log ring buffer capacity. 0 disables call logging.
+// The capacity is fixed at startup (restart to change it); reload does not
+// resize an already-allocated buffer.
+func (p ProxyConfig) CallLogMax() int {
+	if p.CallLogMaxEntries != nil {
+		return *p.CallLogMaxEntries
+	}
+	return 1000
 }
 
 // ManagementConfig controls the management API.
@@ -116,7 +128,7 @@ type PayloadConfig struct {
 // PayloadRule is a default/default-raw/override/override-raw rule. For the raw
 // phases, Params values are JSON-fragment strings validated at load time.
 type PayloadRule struct {
-	Models []PayloadModelRule      `yaml:"models" json:"models"`
+	Models []PayloadModelRule     `yaml:"models" json:"models"`
 	Params map[string]interface{} `yaml:"params" json:"params"`
 }
 
@@ -152,9 +164,9 @@ type Provider struct {
 
 // ProviderModel is one upstream model under a provider.
 type ProviderModel struct {
-	Model                     string             `yaml:"model"                       json:"model"`
-	AliasA                    string             `yaml:"aliasA"                      json:"aliasA"`
-	AnthropicWebSearchForward *WebSearchForward  `yaml:"anthropic_web_search_forward" json:"anthropic_web_search_forward"`
+	Model                     string            `yaml:"model"                       json:"model"`
+	AliasA                    string            `yaml:"aliasA"                      json:"aliasA"`
+	AnthropicWebSearchForward *WebSearchForward `yaml:"anthropic_web_search_forward" json:"anthropic_web_search_forward"`
 }
 
 // WebSearchForward reroutes an Anthropic web_search request to a target model.
@@ -173,7 +185,7 @@ type ClientApiKey struct {
 
 // ClientModel binds a client-visible aliasB to an internal model id.
 type ClientModel struct {
-	Model    string `yaml:"model"    json:"model"`    // internal model id providerName/aliasA
+	Model    string `yaml:"model"    json:"model"` // internal model id providerName/aliasA
 	AliasB   string `yaml:"aliasB"   json:"aliasB"`
 	Priority int    `yaml:"priority" json:"priority"`
 }

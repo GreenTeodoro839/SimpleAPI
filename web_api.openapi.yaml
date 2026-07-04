@@ -503,6 +503,34 @@ paths:
                     items:
                       $ref: "#/components/schemas/UsageItem"
 
+  /v0/management/call-log:
+    get:
+      tags: [Management]
+      summary: 获取最近的调用记录
+      description: 返回最近 N 条上游调用记录（每条为一次上游尝试，按时间倒序）。非破坏性读取，不删除记录；内存环形缓冲，重启丢失。
+      security:
+        - AdminKeyAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+          description: 返回条数上限，默认 100。
+      responses:
+        "200":
+          description: 调用记录列表。
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CallLogEntry"
+
 components:
   securitySchemes:
     ClientBearerAuth:
@@ -914,6 +942,61 @@ components:
         cached_tokens:
           type: integer
           description: openai/codex prompt_tokens_details.cached_tokens 累计
+        reasoning_tokens:
+          type: integer
+          description: openai/codex *_details.reasoning_tokens 累计
+        total_tokens:
+          type: integer
+          description: 上游上报的 total_tokens；缺省时按 input+output(+cache) 推算
+
+    CallLogEntry:
+      type: object
+      description: 一次上游尝试的调用记录。同一次客户端请求因失败切换会产生多条，共享同一 request_id。
+      properties:
+        request_id:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        endpoint:
+          type: string
+          description: 如 "POST /v1/messages"
+        api_key:
+          type: string
+          description: 入站 API key 的 name（非密钥明文）
+        source_protocol:
+          $ref: "#/components/schemas/Protocol"
+        alias:
+          type: string
+          description: 客户端可见模型名（aliasB）
+        provider:
+          type: string
+        provider_type:
+          $ref: "#/components/schemas/Protocol"
+        model:
+          type: string
+          description: 上游真实模型名
+        internal_model:
+          type: string
+        http_status:
+          type: integer
+        latency_ms:
+          type: integer
+        failed:
+          type: boolean
+        tokens:
+          $ref: "#/components/schemas/CallLogTokens"
+
+    CallLogTokens:
+      type: object
+      properties:
+        input_tokens: { type: integer }
+        output_tokens: { type: integer }
+        cache_read_tokens: { type: integer }
+        cache_creation_tokens: { type: integer }
+        cached_tokens: { type: integer }
+        reasoning_tokens: { type: integer }
+        total_tokens: { type: integer }
 
     ModelList:
       type: object
