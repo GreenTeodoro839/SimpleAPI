@@ -31,11 +31,16 @@ func (s ServerConfig) RequestTimeout() int {
 	}
 	return 600
 }
+// StreamIdleTimeout returns the stream idle timeout in seconds. The default is 0
+// (disabled): streams are bounded only by the client connection lifetime and
+// never aborted on idle, so a slow or intermittently-stalled upstream is never
+// cut. Set stream_idle_timeout_seconds > 0 to opt in to aborting a stream that
+// receives no bytes for that long.
 func (s ServerConfig) StreamIdleTimeout() int {
 	if s.StreamIdleTimeoutSeconds != nil {
 		return *s.StreamIdleTimeoutSeconds
 	}
-	return 300
+	return 0
 }
 
 // ProxyConfig controls routing, failover, and statistics behavior.

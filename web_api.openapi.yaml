@@ -618,8 +618,9 @@ components:
           default: 600
         stream_idle_timeout_seconds:
           type: integer
-          minimum: 1
-          default: 300
+          minimum: 0
+          default: 0
+          description: Stream idle timeout in seconds. 0 (default) disables idle abort; streams are bounded only by the client connection.
 
     ProxyConfig:
       type: object

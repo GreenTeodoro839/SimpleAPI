@@ -3,7 +3,10 @@ version: 1
 server:
   listen: "127.0.0.1:8317"
   request_timeout_seconds: 600
-  stream_idle_timeout_seconds: 300
+  # Stream idle timeout in seconds. 0 (default) = disabled: streams run for the
+  # full client connection and are never aborted on idle. Set > 0 to abort a
+  # stream that receives no bytes for this long (resets on every chunk).
+  stream_idle_timeout_seconds: 0
 
 proxy:
   # 同一个入站 API key 下，某个候选模型连续失败达到该值后，
