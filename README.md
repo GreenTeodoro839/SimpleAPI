@@ -39,6 +39,8 @@ export PROXY_ADMIN_KEY=change-me
 
 启动参数：`-config`（默认 `config.yaml`）、`-listen`（覆盖 `server.listen`）、`-log-level`（debug|info|warn|error）、`-log-json`。
 
+默认以 **release 模式**运行（不打印 gin 路由表与 `[GIN-debug]` 告警）。需要看路由表/调试时，传 `-log-level debug`，或设置环境变量 `GIN_MODE=debug`；`GIN_MODE` 优先级最高。
+
 > `config.yaml` 默认只保留 `server` / `proxy` / `management` 骨架，`payload` / `providers` / `api_keys` 全部注释，即开箱不含任何模型与密钥——请按需取消注释，或启动后通过管理 API 在线配置。
 
 ## 上游 URL 约定
