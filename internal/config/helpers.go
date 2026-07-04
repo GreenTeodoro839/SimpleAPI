@@ -11,17 +11,17 @@ func EffectiveAliasA(pm ProviderModel) string {
 	return pm.Model
 }
 
-// ModelInternalID returns the internal model id "providerName_effectiveAliasA".
-// Provider names are validated to contain no '_', so the aliasA is preserved
-// even when it itself contains '_'.
+// ModelInternalID returns the internal model id "providerName/effectiveAliasA".
+// Provider names are validated to contain no '/', so the aliasA is preserved
+// even when it itself contains '/'.
 func ModelInternalID(providerName string, pm ProviderModel) string {
-	return providerName + "_" + EffectiveAliasA(pm)
+	return providerName + "/" + EffectiveAliasA(pm)
 }
 
-// ParseInternalModelID splits an internal model id on the FIRST '_'. ok is false
-// when the id has no '_', or when either side is empty.
+// ParseInternalModelID splits an internal model id on the FIRST '/'. ok is false
+// when the id has no '/', or when either side is empty.
 func ParseInternalModelID(id string) (provider, aliasA string, ok bool) {
-	i := strings.IndexByte(id, '_')
+	i := strings.IndexByte(id, '/')
 	if i <= 0 || i == len(id)-1 {
 		return "", "", false
 	}

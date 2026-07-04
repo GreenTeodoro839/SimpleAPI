@@ -465,7 +465,7 @@ paths:
     get:
       tags: [Management]
       summary: 获取内部模型索引
-      description: 返回 providerName_aliasA 维度的模型列表。
+      description: 返回 providerName/aliasA 维度的模型列表。
       security:
         - AdminKeyAuth: []
       responses:
@@ -527,8 +527,8 @@ components:
       required: true
       schema:
         type: string
-        pattern: "^[^_]+$"
-      description: Provider name，不能包含下划线。
+        pattern: "^[^/]+$"
+      description: Provider name，不能包含斜杠。
     KeyName:
       name: keyName
       in: path
@@ -740,7 +740,7 @@ components:
         name:
           type: string
           description: >
-            模型匹配表达式，支持 * 通配符。推荐使用 internal model id，例如 anthropic-main_sonnet4；
+            模型匹配表达式，支持 * 通配符。推荐使用 internal model id，例如 anthropic-main/sonnet4；
             也可匹配 aliasA 或上游真实模型名。
         protocol:
           $ref: "#/components/schemas/Protocol"
@@ -781,8 +781,8 @@ components:
       properties:
         name:
           type: string
-          pattern: "^[^_]+$"
-          description: 全局唯一，不能包含下划线。
+          pattern: "^[^/]+$"
+          description: 全局唯一，不能包含斜杠。
         type:
           $ref: "#/components/schemas/Protocol"
         url:
@@ -824,8 +824,8 @@ components:
           type: boolean
         target_model:
           type: string
-          pattern: "^[^_]+_.+$"
-          description: 目标 internal model id，即 providerName_aliasA。
+          pattern: "^[^/]+/.+$"
+          description: 目标 internal model id，即 providerName/aliasA。
 
     ClientApiKey:
       type: object
@@ -854,8 +854,8 @@ components:
       properties:
         model:
           type: string
-          pattern: "^[^_]+_.+$"
-          description: internal model id，即 providerName_aliasA。
+          pattern: "^[^/]+/.+$"
+          description: internal model id，即 providerName/aliasA。
         aliasB:
           type: string
           description: 客户端可见模型名；为空时默认等于 aliasA。
@@ -870,7 +870,7 @@ components:
       properties:
         id:
           type: string
-          example: "anthropic-main_sonnet4"
+          example: "anthropic-main/sonnet4"
         provider:
           type: string
           example: "anthropic-main"

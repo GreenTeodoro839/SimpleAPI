@@ -20,7 +20,7 @@ func validConfig() *Config {
 		},
 		APIKeys: []ClientApiKey{
 			{Name: "dev", Key: "ck1", AllowedProtocols: []string{"anthropic"},
-				Models: []ClientModel{{Model: "p1_a1"}}},
+				Models: []ClientModel{{Model: "p1/a1"}}},
 		},
 	}
 }
@@ -56,11 +56,11 @@ func TestDuplicateAliasA(t *testing.T) {
 	}
 }
 
-func TestProviderNameUnderscore(t *testing.T) {
+func TestProviderNameSlash(t *testing.T) {
 	cfg := validConfig()
-	cfg.Providers[0].Name = "bad_name"
-	if !hasCode(Validate(cfg), "provider_name_underscore") {
-		t.Error("expected provider_name_underscore")
+	cfg.Providers[0].Name = "bad/name"
+	if !hasCode(Validate(cfg), "provider_name_slash") {
+		t.Error("expected provider_name_slash")
 	}
 }
 
@@ -82,7 +82,7 @@ func TestClientModelNotFound(t *testing.T) {
 
 func TestWebSearchSelfLoop(t *testing.T) {
 	cfg := validConfig()
-	cfg.Providers[0].Models[0].AnthropicWebSearchForward = &WebSearchForward{Enabled: true, TargetModel: "p1_a1"}
+	cfg.Providers[0].Models[0].AnthropicWebSearchForward = &WebSearchForward{Enabled: true, TargetModel: "p1/a1"}
 	if !hasCode(Validate(cfg), "invalid_web_search_target") {
 		t.Error("expected invalid_web_search_target for self-loop")
 	}
@@ -133,11 +133,11 @@ func TestParseInternalModelID(t *testing.T) {
 		prov, alias      string
 		ok               bool
 	}{
-		{"p_a", "p", "a", true},
-		{"p_a_b", "p", "a_b", true}, // split on first underscore only
+		{"p/a", "p", "a", true},
+		{"p/a/b", "p", "a/b", true}, // split on first slash only
 		{"pa", "", "", false},
-		{"_a", "", "", false},
-		{"p_", "", "", false},
+		{"/a", "", "", false},
+		{"p/", "", "", false},
 	}
 	for _, c := range cases {
 		prov, alias, ok := ParseInternalModelID(c.in)

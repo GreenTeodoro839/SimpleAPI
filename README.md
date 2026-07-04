@@ -18,10 +18,10 @@ See [`DEVELOPMENT.md`](DEVELOPMENT.md) for the full specification and
 
 ## Model identity
 
-- A provider model is identified internally by `providerName_aliasA` (split on
-  the first `_`, so provider names must not contain `_`).
+- A provider model is identified internally by `providerName/aliasA` (split on
+  the first `/`, so provider names must not contain `/`).
 - Clients call with `aliasB`, which each API key maps to one or more
-  `providerName_aliasA` candidates (sorted by priority). The response `model`
+  `providerName/aliasA` candidates (sorted by priority). The response `model`
   field is rewritten back to `aliasB`. Statistics use `aliasA`/internal id, never
   `aliasB`.
 

@@ -160,7 +160,7 @@ type ProviderModel struct {
 // WebSearchForward reroutes an Anthropic web_search request to a target model.
 type WebSearchForward struct {
 	Enabled     bool   `yaml:"enabled"      json:"enabled"`
-	TargetModel string `yaml:"target_model" json:"target_model"` // internal model id providerName_aliasA
+	TargetModel string `yaml:"target_model" json:"target_model"` // internal model id providerName/aliasA
 }
 
 // ClientApiKey is one inbound API key with its protocol and model authorization.
@@ -173,7 +173,7 @@ type ClientApiKey struct {
 
 // ClientModel binds a client-visible aliasB to an internal model id.
 type ClientModel struct {
-	Model    string `yaml:"model"    json:"model"`    // internal model id providerName_aliasA
+	Model    string `yaml:"model"    json:"model"`    // internal model id providerName/aliasA
 	AliasB   string `yaml:"aliasB"   json:"aliasB"`
 	Priority int    `yaml:"priority" json:"priority"`
 }

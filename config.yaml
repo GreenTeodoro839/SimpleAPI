@@ -26,7 +26,7 @@ payload:
   # default/default-raw 只在字段不存在时写入。
   default:
     - models:
-        - name: "anthropic-main_sonnet4"
+        - name: "anthropic-main/sonnet4"
           protocol: "anthropic"
       params:
         "max_tokens": 4096
@@ -34,7 +34,7 @@ payload:
   # raw 规则的值是 JSON 片段字符串，适合写入对象或数组。
   default-raw:
     - models:
-        - name: "openai-main_gpt41mini"
+        - name: "openai-main/gpt41mini"
           protocol: "openai_completion"
           not-exist:
             - "response_format"
@@ -44,7 +44,7 @@ payload:
   # override/override-raw 总是覆盖已有字段。
   override:
     - models:
-        - name: "codex-main_codex5"
+        - name: "codex-main/codex5"
           protocol: "codex"
           from-protocol: "codex"
       params:
@@ -52,7 +52,7 @@ payload:
 
   override-raw:
     - models:
-        - name: "codex-main_codex5"
+        - name: "codex-main/codex5"
           protocol: "codex"
           headers:
             X-Client-Tier: "dev-*"
@@ -79,7 +79,7 @@ providers:
         aliasA: "sonnet4"
         anthropic_web_search_forward:
           enabled: true
-          target_model: "anthropic-search_sonnet4-search"
+          target_model: "anthropic-search/sonnet4-search"
 
   - name: "anthropic-search"
     type: "anthropic"
@@ -118,17 +118,17 @@ api_keys:
       - "codex"
     models:
       # 客户端用 model: "claude" 调用。
-      # 优先走 anthropic-main_sonnet4；连续失败超过阈值后走 anthropic-search_sonnet4-search。
-      - model: "anthropic-main_sonnet4"
+      # 优先走 anthropic-main/sonnet4；连续失败超过阈值后走 anthropic-search/sonnet4-search。
+      - model: "anthropic-main/sonnet4"
         aliasB: "claude"
         priority: 100
-      - model: "anthropic-search_sonnet4-search"
+      - model: "anthropic-search/sonnet4-search"
         aliasB: "claude"
         priority: 50
-      - model: "openai-main_gpt41mini"
+      - model: "openai-main/gpt41mini"
         aliasB: "gpt-mini"
         priority: 0
-      - model: "codex-main_codex5"
+      - model: "codex-main/codex5"
         aliasB: "codex"
         priority: 0
 
@@ -137,6 +137,6 @@ api_keys:
     allowed_protocols:
       - "codex"
     models:
-      - model: "codex-main_codex5"
+      - model: "codex-main/codex5"
         aliasB: "codex"
         priority: 0

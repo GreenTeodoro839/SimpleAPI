@@ -40,9 +40,9 @@ func Validate(cfg *Config) []ValidationError {
 		if p.Name == "" {
 			errs = append(errs, ve(base+".name", "provider_name_required", "provider name is required"))
 		} else {
-			if containsUnderscore(p.Name) {
-				errs = append(errs, ve(base+".name", "provider_name_underscore",
-					fmt.Sprintf("provider name %q must not contain '_'", p.Name)))
+			if containsSlash(p.Name) {
+				errs = append(errs, ve(base+".name", "provider_name_slash",
+					fmt.Sprintf("provider name %q must not contain '/'", p.Name)))
 			}
 			if _, dup := providerSeen[p.Name]; dup {
 				errs = append(errs, ve(base+".name", "duplicate_provider",
@@ -182,9 +182,9 @@ func ve(path, code, msg string) ValidationError {
 	return ValidationError{Path: path, Code: code, Message: msg}
 }
 
-func containsUnderscore(s string) bool {
+func containsSlash(s string) bool {
 	for i := 0; i < len(s); i++ {
-		if s[i] == '_' {
+		if s[i] == '/' {
 			return true
 		}
 	}

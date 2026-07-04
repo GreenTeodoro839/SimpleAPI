@@ -16,7 +16,7 @@ type ResolvedModel struct {
 	ProviderType    string
 	UpstreamModel   string
 	AliasA          string // effective alias (model name when aliasA was empty)
-	InternalID      string // providerName + "_" + AliasA
+	InternalID      string // providerName + "/" + AliasA
 	WebSearch       *config.WebSearchForward
 }
 
