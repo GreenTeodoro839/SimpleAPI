@@ -168,15 +168,14 @@ func (h *Handler) ServeProxy(c *gin.Context) {
 		})
 		h.logger.Debugf("outbound body [%s]: %s", rm.InternalID, string(body))
 
-		ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
 		if isStream {
-			_, cleanComplete, retryable := h.attemptStream(c, ctx, pe, body, aliasB, rewrite, retryCodes, pair)
-			cancel()
+			idleTimeout := time.Duration(snap.Config.Server.StreamIdleTimeout()) * time.Second
+			_, cleanComplete, retryable, inTok, outTok := h.attemptStream(c, pe, body, aliasB, rewrite, retryCodes, pair, idleTimeout)
 			streamStatus := 0
 			if !retryable {
 				streamStatus = 200
 			}
-			h.recordUsage(snap, rm, sourceProto, streamStatus, nil, retryable || !cleanComplete)
+			h.recordUsage(snap, rm, sourceProto, streamStatus, nil, inTok, outTok, retryable || !cleanComplete)
 			if retryable {
 				fo.OnFailure(kc.Name, cand.InternalID)
 				h.logger.WithField("model", cand.InternalID).Debug("stream candidate failed; trying next")
@@ -188,9 +187,10 @@ func (h *Handler) ServeProxy(c *gin.Context) {
 			return // committed (success or mid-stream after commit): cannot retry
 		}
 
+		ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
 		status, ct, respBytes, retryable := h.attemptNonStream(ctx, pe, body, retryCodes, pair)
 		cancel()
-		h.recordUsage(snap, rm, sourceProto, status, respBytes, retryable)
+		h.recordUsage(snap, rm, sourceProto, status, respBytes, 0, 0, retryable)
 		if retryable {
 			fo.OnFailure(kc.Name, cand.InternalID)
 			h.logger.WithField("model", cand.InternalID).Debug("non-stream candidate failed; trying next")
@@ -215,22 +215,23 @@ func (h *Handler) ServeProxy(c *gin.Context) {
 }
 
 // recordUsage adds one upstream-attempt row to the in-memory usage aggregate,
-// keyed by internal model dimensions (never aliasB). No-op when disabled.
-func (h *Handler) recordUsage(snap runtime.Snapshot, rm *indexes.ResolvedModel, sourceProto string, status int, body []byte, failed bool) {
+// keyed by internal model dimensions (never aliasB). No-op when disabled. For
+// streaming attempts body is nil and inTok/outTok are passed in (mined from the
+// SSE events); for non-stream attempts body is parsed for usage.
+func (h *Handler) recordUsage(snap runtime.Snapshot, rm *indexes.ResolvedModel, sourceProto string, status int, body []byte, inTok, outTok int64, failed bool) {
 	if !snap.Config.Proxy.UsageEnabled() {
 		return
 	}
-	var in, out int64
 	if body != nil {
 		u := gjson.GetBytes(body, "usage")
 		if u.Exists() {
-			in = u.Get("input_tokens").Int()
-			if in == 0 {
-				in = u.Get("prompt_tokens").Int()
+			inTok = u.Get("input_tokens").Int()
+			if inTok == 0 {
+				inTok = u.Get("prompt_tokens").Int()
 			}
-			out = u.Get("output_tokens").Int()
-			if out == 0 {
-				out = u.Get("completion_tokens").Int()
+			outTok = u.Get("output_tokens").Int()
+			if outTok == 0 {
+				outTok = u.Get("completion_tokens").Int()
 			}
 		}
 	}
@@ -243,5 +244,5 @@ func (h *Handler) recordUsage(snap runtime.Snapshot, rm *indexes.ResolvedModel, 
 		SourceProtocol:     sourceProto,
 		TargetProviderType: rm.ProviderType,
 		HTTPStatus:         status,
-	}, in, out, failed)
+	}, inTok, outTok, failed)
 }
