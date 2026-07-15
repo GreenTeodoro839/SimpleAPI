@@ -6,7 +6,6 @@ import (
 	"github.com/GreenTeodoro839/SimpleAPI/internal/config"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/web"
 	"github.com/gin-gonic/gin"
-	"gopkg.in/yaml.v3"
 )
 
 func (h *Handler) listAPIKeys(c *gin.Context) {
@@ -16,13 +15,8 @@ func (h *Handler) listAPIKeys(c *gin.Context) {
 }
 
 func (h *Handler) createAPIKey(c *gin.Context) {
-	body, err := readBody(c)
-	if err != nil {
-		web.WriteError(c, http.StatusBadRequest, "invalid_request", err.Error(), nil)
-		return
-	}
 	var k config.ClientApiKey
-	if err := yaml.Unmarshal(body, &k); err != nil {
+	if err := decodeBody(c, &k); err != nil {
 		web.WriteError(c, http.StatusBadRequest, "invalid_request", err.Error(), nil)
 		return
 	}
@@ -45,13 +39,8 @@ func (h *Handler) getAPIKey(c *gin.Context) {
 
 func (h *Handler) putAPIKey(c *gin.Context) {
 	name := c.Param("keyName")
-	body, err := readBody(c)
-	if err != nil {
-		web.WriteError(c, http.StatusBadRequest, "invalid_request", err.Error(), nil)
-		return
-	}
 	var k config.ClientApiKey
-	if err := yaml.Unmarshal(body, &k); err != nil {
+	if err := decodeBody(c, &k); err != nil {
 		web.WriteError(c, http.StatusBadRequest, "invalid_request", err.Error(), nil)
 		return
 	}

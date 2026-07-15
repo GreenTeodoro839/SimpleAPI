@@ -1,9 +1,12 @@
 package management
 
 import (
+	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/GreenTeodoro839/SimpleAPI/internal/config"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/indexes"
@@ -55,13 +58,8 @@ func (h *Handler) getConfig(c *gin.Context) {
 }
 
 func (h *Handler) putConfig(c *gin.Context) {
-	body, err := readBody(c)
-	if err != nil {
-		web.WriteError(c, http.StatusBadRequest, "invalid_request", err.Error(), nil)
-		return
-	}
-	cfg, err := config.Decode(body)
-	if err != nil {
+	cfg := &config.Config{}
+	if err := decodeBody(c, cfg); err != nil {
 		web.WriteError(c, http.StatusBadRequest, "invalid_request", err.Error(), nil)
 		return
 	}
@@ -71,13 +69,8 @@ func (h *Handler) putConfig(c *gin.Context) {
 }
 
 func (h *Handler) validate(c *gin.Context) {
-	body, err := readBody(c)
-	if err != nil {
-		web.WriteError(c, http.StatusBadRequest, "invalid_request", err.Error(), nil)
-		return
-	}
-	cfg, err := config.Decode(body)
-	if err != nil {
+	cfg := &config.Config{}
+	if err := decodeBody(c, cfg); err != nil {
 		web.WriteError(c, http.StatusBadRequest, "invalid_request", err.Error(), nil)
 		return
 	}
@@ -94,13 +87,8 @@ func (h *Handler) getPayload(c *gin.Context) {
 }
 
 func (h *Handler) putPayload(c *gin.Context) {
-	body, err := readBody(c)
-	if err != nil {
-		web.WriteError(c, http.StatusBadRequest, "invalid_request", err.Error(), nil)
-		return
-	}
 	var pc config.PayloadConfig
-	if err := yaml.Unmarshal(body, &pc); err != nil {
+	if err := decodeBody(c, &pc); err != nil {
 		web.WriteError(c, http.StatusBadRequest, "invalid_request", err.Error(), nil)
 		return
 	}
@@ -171,4 +159,60 @@ func (h *Handler) getCallLog(c *gin.Context) {
 
 func readBody(c *gin.Context) ([]byte, error) {
 	return io.ReadAll(c.Request.Body)
+}
+
+// decodeBody reads and parses the management request body into dst. It is the
+// single entry point for every write endpoint.
+//
+// The management API is JSON; PUT /config and POST /validate also document
+// application/yaml. JSON is decoded with encoding/json rather than yaml.v3:
+// gopkg.in/yaml.v3 does not implement the "\/" escape, which is valid JSON and
+// is emitted by some serializers (notably Android's org.json), so a YAML-only
+// decode rejected such bodies with "found unknown escape character". YAML is
+// used only when the request is explicitly YAML; otherwise JSON is tried first,
+// with a YAML fallback for an unspecified content type so a plain YAML body
+// still parses.
+func decodeBody(c *gin.Context, dst any) error {
+	body, err := readBody(c)
+	if err != nil {
+		return err
+	}
+	return decode(requestMIME(c.GetHeader("Content-Type")), body, dst)
+}
+
+// decode parses body into dst according to contentType (a bare MIME type with
+// parameters stripped). Split out from decodeBody so the parsing rules can be
+// exercised directly in tests.
+func decode(contentType string, body []byte, dst any) error {
+	switch contentType {
+	case "application/yaml", "application/x-yaml", "text/yaml":
+		if err := yaml.Unmarshal(body, dst); err != nil {
+			return fmt.Errorf("invalid YAML request body: %w", err)
+		}
+		return nil
+	}
+	// JSON is the documented default, and encoding/json handles "\/" correctly.
+	if err := json.Unmarshal(body, dst); err == nil {
+		return nil
+	} else if contentType == "application/json" || strings.HasSuffix(contentType, "+json") {
+		// The client explicitly sent JSON, so surface the JSON error rather
+		// than masking it by retrying as YAML.
+		return fmt.Errorf("invalid JSON request body: %w", err)
+	}
+	// Unspecified (or unknown) content type: fall back to YAML, which is a
+	// strict superset of JSON, so a plain YAML body still works.
+	if err := yaml.Unmarshal(body, dst); err != nil {
+		return fmt.Errorf("invalid request body: %w", err)
+	}
+	return nil
+}
+
+// requestMIME returns the bare, lowercased MIME type from a Content-Type header
+// value, with any parameters (e.g. "; charset=utf-8") stripped. An empty header
+// yields the empty string.
+func requestMIME(contentType string) string {
+	if i := strings.IndexByte(contentType, ';'); i >= 0 {
+		contentType = contentType[:i]
+	}
+	return strings.ToLower(strings.TrimSpace(contentType))
 }

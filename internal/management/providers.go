@@ -6,7 +6,6 @@ import (
 	"github.com/GreenTeodoro839/SimpleAPI/internal/config"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/web"
 	"github.com/gin-gonic/gin"
-	"gopkg.in/yaml.v3"
 )
 
 func (h *Handler) listProviders(c *gin.Context) {
@@ -16,13 +15,8 @@ func (h *Handler) listProviders(c *gin.Context) {
 }
 
 func (h *Handler) createProvider(c *gin.Context) {
-	body, err := readBody(c)
-	if err != nil {
-		web.WriteError(c, http.StatusBadRequest, "invalid_request", err.Error(), nil)
-		return
-	}
 	var p config.Provider
-	if err := yaml.Unmarshal(body, &p); err != nil {
+	if err := decodeBody(c, &p); err != nil {
 		web.WriteError(c, http.StatusBadRequest, "invalid_request", err.Error(), nil)
 		return
 	}
@@ -45,13 +39,8 @@ func (h *Handler) getProvider(c *gin.Context) {
 
 func (h *Handler) putProvider(c *gin.Context) {
 	name := c.Param("name")
-	body, err := readBody(c)
-	if err != nil {
-		web.WriteError(c, http.StatusBadRequest, "invalid_request", err.Error(), nil)
-		return
-	}
 	var p config.Provider
-	if err := yaml.Unmarshal(body, &p); err != nil {
+	if err := decodeBody(c, &p); err != nil {
 		web.WriteError(c, http.StatusBadRequest, "invalid_request", err.Error(), nil)
 		return
 	}
