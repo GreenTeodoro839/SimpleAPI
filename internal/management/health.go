@@ -5,7 +5,7 @@ package management
 
 import "github.com/gin-gonic/gin"
 
-// Health is the unauthenticated liveness probe (GET /-/health).
+// Health is the unauthenticated liveness probe (GET /v0/health).
 func Health(c *gin.Context) {
 	c.JSON(200, gin.H{"status": "ok"})
 }

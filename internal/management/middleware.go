@@ -11,7 +11,7 @@ import (
 
 // AdminKeyAuth guards management endpoints with a constant-time X-Admin-Key
 // comparison against the expanded management.admin_key. When management is
-// disabled, every management endpoint (except /-/health) returns 401.
+// disabled, every management endpoint (except /v0/health) returns 401.
 func AdminKeyAuth(rt *runtime.Runtime) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		snap := rt.Snapshot()

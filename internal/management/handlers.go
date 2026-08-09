@@ -27,7 +27,7 @@ func NewHandler(rt *runtime.Runtime, logger *logrus.Logger) *Handler {
 	return &Handler{rt: rt, logger: logger}
 }
 
-// Register wires every management endpoint (except /-/health) on rg.
+// Register wires every management endpoint (except /v0/health) on rg.
 func (h *Handler) Register(rg *gin.RouterGroup) {
 	rg.GET("/config", h.getConfig)
 	rg.PUT("/config", h.putConfig)

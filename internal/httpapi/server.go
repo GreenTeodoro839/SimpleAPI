@@ -20,8 +20,8 @@ func NewServer(rt *runtime.Runtime, logger *logrus.Logger) *gin.Engine {
 	g.Use(gin.Recovery())
 	g.Use(requestLogger(logger))
 
-	// Management: health is unauthenticated.
-	g.GET("/-/health", management.Health)
+	// Management: health is an unauthenticated liveness probe under /v0.
+	g.GET("/v0/health", management.Health)
 
 	// Client proxy routes and the rest of the management API are registered in
 	// later phases.

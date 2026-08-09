@@ -24,8 +24,8 @@ key 对应 `config.yaml` 里 `api_keys[].key`（支持 `${VAR}` 环境变量占�
 
 ### 管理接口
 
-- 所有管理端点（除 `/-/health` 外）都要求请求头 `X-Admin-Key: <admin-key>`，与 `management.admin_key` 常量时间比较。
-- `management.enabled: false` 时整套管理接口（含 `/-/health` 之外）禁用。
+- 所有管理端点（除 `/v0/health` 外）都要求请求头 `X-Admin-Key: <admin-key>`，与 `management.admin_key` 常量时间比较。
+- `management.enabled: false` 时整套管理接口（含 `/v0/health` 之外）禁用。
 - 建议仅监听 `127.0.0.1`，或由反向代理负责 TLS 与访问控制；默认不要对公网开放管理接口。
 
 ---
@@ -113,10 +113,10 @@ curl -H "Authorization: Bearer $CLIENT_API_KEY" http://127.0.0.1:8317/v1/models
 
 ### 健康检查
 
-- `GET /-/health` —— 免鉴权。
+- `GET /v0/health` —— 免鉴权。
 
 ```bash
-curl http://127.0.0.1:8317/-/health        # {"status":"ok"}
+curl http://127.0.0.1:8317/v0/health        # {"status":"ok"}
 ```
 
 ### 配置整体

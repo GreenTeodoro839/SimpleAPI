@@ -142,7 +142,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
-  /-/health:
+  /v0/health:
     get:
       tags: [Management]
       summary: 健康检查
