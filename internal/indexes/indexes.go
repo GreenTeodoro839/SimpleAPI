@@ -6,8 +6,10 @@ package indexes
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/GreenTeodoro839/SimpleAPI/internal/config"
+	"github.com/GreenTeodoro839/SimpleAPI/internal/glob"
 )
 
 // ResolvedModel is an upstream model with all defaults applied.
@@ -37,13 +39,55 @@ type Candidate struct {
 	Order      int // config order, for stable tiebreak
 }
 
+// wildcardRoute is one aliasB pattern that contains '*' (DEVELOPMENT.md §8). It
+// holds its own priority-sorted candidate list, just like an exact Routing entry.
+// Wildcards are matched only when no exact aliasB matches, in config declaration
+// order (first declared wins).
+type wildcardRoute struct {
+	Pattern    string
+	Candidates []Candidate
+}
+
 // KeyContext is the resolved authorization for one inbound API key.
 type KeyContext struct {
 	Name             string
 	Key              string
 	AllowedProtocols map[string]struct{}
-	Routing          map[string][]Candidate // aliasB -> candidates sorted by priority desc
-	AliasBs          []string               // unique aliasBs, sorted, for /v1/models
+	Routing          map[string][]Candidate // exact aliasB -> candidates sorted by priority desc
+	Wildcards        []wildcardRoute        // aliasB patterns containing '*', config declaration order
+	AliasBs          []string               // unique concrete (non-wildcard) aliasBs, sorted, for /v1/models
+}
+
+// ResolveCandidates returns the candidate list for a client-requested model: an
+// exact aliasB match always wins; otherwise the first wildcard pattern (in
+// config declaration order) whose glob matches the request. nil means routable
+// nowhere for this key.
+func (kc *KeyContext) ResolveCandidates(requested string) []Candidate {
+	if cs, ok := kc.Routing[requested]; ok {
+		return cs
+	}
+	for i := range kc.Wildcards {
+		w := &kc.Wildcards[i]
+		if glob.Match(w.Pattern, requested) {
+			return w.Candidates
+		}
+	}
+	return nil
+}
+
+// addWildcardCandidate appends cand to the wildcardRoute with the given pattern,
+// preserving first-declaration (config) order. Used during Build.
+func (kc *KeyContext) addWildcardCandidate(pattern string, cand Candidate) {
+	for i := range kc.Wildcards {
+		if kc.Wildcards[i].Pattern == pattern {
+			kc.Wildcards[i].Candidates = append(kc.Wildcards[i].Candidates, cand)
+			return
+		}
+	}
+	kc.Wildcards = append(kc.Wildcards, wildcardRoute{
+		Pattern:    pattern,
+		Candidates: []Candidate{cand},
+	})
 }
 
 // Indexes is the immutable set of lookup tables built from one config revision.
@@ -110,25 +154,37 @@ func Build(cfg *config.Config) (*Indexes, error) {
 			if aliasB == "" {
 				aliasB = rm.AliasA
 			}
-			kc.Routing[aliasB] = append(kc.Routing[aliasB], Candidate{
+			cand := Candidate{
 				InternalID: cm.Model,
 				AliasB:     aliasB,
 				Priority:   cm.Priority,
 				Order:      order,
-			})
-			if _, seen := aliasBSeen[aliasB]; !seen {
-				aliasBSeen[aliasB] = struct{}{}
-				kc.AliasBs = append(kc.AliasBs, aliasB)
+			}
+			// Wildcard aliasBs (containing '*') are routed separately from exact
+			// names; exact names also feed the /v1/models list, wildcards do not.
+			if strings.ContainsRune(aliasB, '*') {
+				kc.addWildcardCandidate(aliasB, cand)
+			} else {
+				kc.Routing[aliasB] = append(kc.Routing[aliasB], cand)
+				if _, seen := aliasBSeen[aliasB]; !seen {
+					aliasBSeen[aliasB] = struct{}{}
+					kc.AliasBs = append(kc.AliasBs, aliasB)
+				}
 			}
 		}
-		for aliasB := range kc.Routing {
-			sort.SliceStable(kc.Routing[aliasB], func(a, b int) bool {
-				ca, cb := kc.Routing[aliasB][a], kc.Routing[aliasB][b]
-				if ca.Priority != cb.Priority {
-					return ca.Priority > cb.Priority
+		sortCandidates := func(cs []Candidate) {
+			sort.SliceStable(cs, func(a, b int) bool {
+				if cs[a].Priority != cs[b].Priority {
+					return cs[a].Priority > cs[b].Priority
 				}
-				return ca.Order < cb.Order
+				return cs[a].Order < cs[b].Order
 			})
+		}
+		for aliasB := range kc.Routing {
+			sortCandidates(kc.Routing[aliasB])
+		}
+		for i := range kc.Wildcards {
+			sortCandidates(kc.Wildcards[i].Candidates)
 		}
 		sort.Strings(kc.AliasBs)
 		idx.Keys[k.Key] = kc

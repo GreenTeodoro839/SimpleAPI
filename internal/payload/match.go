@@ -5,9 +5,9 @@ package payload
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/GreenTeodoro839/SimpleAPI/internal/config"
+	"github.com/GreenTeodoro839/SimpleAPI/internal/glob"
 	"github.com/tidwall/gjson"
 )
 
@@ -35,9 +35,9 @@ func anyModelMatches(models []config.PayloadModelRule, mc MatchContext, body []b
 func ruleMatches(r config.PayloadModelRule, mc MatchContext, body []byte) bool {
 	// 1. model name glob (try internal id, aliasA, upstream model)
 	if r.Name != "" {
-		if !globMatch(r.Name, mc.InternalID) &&
-			!globMatch(r.Name, mc.AliasA) &&
-			!globMatch(r.Name, mc.UpstreamModel) {
+		if !glob.Match(r.Name, mc.InternalID) &&
+			!glob.Match(r.Name, mc.AliasA) &&
+			!glob.Match(r.Name, mc.UpstreamModel) {
 			return false
 		}
 	}
@@ -51,7 +51,7 @@ func ruleMatches(r config.PayloadModelRule, mc MatchContext, body []byte) bool {
 	}
 	// 4. headers (case-insensitive keys, glob values)
 	for k, pat := range r.Headers {
-		if !globMatch(pat, mc.Headers.Get(k)) {
+		if !glob.Match(pat, mc.Headers.Get(k)) {
 			return false
 		}
 	}
@@ -105,28 +105,5 @@ func gjsonEquals(res gjson.Result, val interface{}) bool {
 	return false
 }
 
-// globMatch supports '*' as a wildcard for any character sequence.
-func globMatch(pattern, s string) bool {
-	if pattern == "" {
-		return false
-	}
-	if pattern == "*" {
-		return true
-	}
-	if !strings.Contains(pattern, "*") {
-		return pattern == s
-	}
-	parts := strings.Split(pattern, "*")
-	if !strings.HasPrefix(s, parts[0]) {
-		return false
-	}
-	s = s[len(parts[0]):]
-	for _, p := range parts[1 : len(parts)-1] {
-		idx := strings.Index(s, p)
-		if idx < 0 {
-			return false
-		}
-		s = s[idx+len(p):]
-	}
-	return strings.HasSuffix(s, parts[len(parts)-1])
-}
+// glob wildcard handling lives in internal/glob (shared with aliasB routing).
+

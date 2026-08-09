@@ -46,7 +46,7 @@ providerName/aliasA
 
 `aliasB`
 
-客户端调用时看到和填写的模型名。`aliasB` 只在某个入站 API key 的授权范围内生效。若为空，默认等于对应模型的 `aliasA`。
+客户端调用时看到和填写的模型名。`aliasB` 只在某个入站 API key 的授权范围内生效。若为空，默认等于对应模型的 `aliasA`。`aliasB` 可含 `*` 通配符（开头/中间/结尾均可，`*` 匹配任意长度的字符序列）：精确名优先；未命中时按配置声明顺序尝试含 `*` 的模式。通配命中时，对客户端保持透明——响应里的 `model` 与调用记录都记客户端实际发送的名字，而不是模式串。
 
 `protocol`
 
@@ -127,8 +127,8 @@ Authorization: Bearer <client-api-key>
 认证成功后，服务拿到对应的 `api_keys[]` 配置，并执行：
 
 - 当前请求路径对应的 protocol 必须存在于 `allowed_protocols`。
-- 请求体里的 `model` 必须是该 key 下某个模型配置的 `aliasB`。
-- 如果同一 key 下有多个相同 `aliasB`，按优先级和失败状态选择实际 internal model id。
+- 请求体里的 `model` 必须是该 key 下某个模型配置的 `aliasB`（精确名优先；否则匹配含 `*` 的通配 `aliasB`，按配置声明顺序）。
+- 选中的 `aliasB`（精确或通配）下若有多个候选，按优先级和失败状态选择实际 internal model id。
 
 ## 8. 请求路由行为
 
@@ -139,8 +139,8 @@ Authorization: Bearer <client-api-key>
 1. 根据 URL 路径确定客户端 protocol。
 2. 认证入站 API key。
 3. 检查该 key 是否允许当前 protocol。
-4. 从请求体读取 `model`，作为 `aliasB`。
-5. 在该 key 的模型路由表中查找 `aliasB` 对应的候选模型。
+4. 从请求体读取 `model`，作为 `aliasB`（客户端实际发送值，后续改写与记录都用它）。
+5. 在该 key 的模型路由表中查找候选：精确 `aliasB` 命中优先；否则按配置声明顺序匹配含 `*` 的通配 `aliasB`。
 6. 按优先级从高到低选择候选模型。
 7. 跳过已达到最大连续失败次数的候选模型。
 8. 将请求体中的 `model` 改为上游真实模型名。
@@ -307,7 +307,7 @@ payload:
 - HTTP 状态
 - token 用量，如果上游返回
 
-不要以 `aliasB` 作为主统计维度。`aliasB` 可以作为请求标签记录，但不能作为聚合主键，因为它只属于某个入站 API key 的客户端命名空间。
+不要以 `aliasB` 作为主统计维度。`aliasB` 可以作为请求标签记录，但不能作为聚合主键，因为它只属于某个入站 API key 的客户端命名空间。当 `aliasB` 含通配符并被通配命中时，调用记录里的请求标签记客户端实际发送的 `model`（例如 `deepseek-chat`），而不是模式串（`deepseek-*`）。
 
 由于不使用数据库，统计默认只保存在内存中。重启丢失是可接受行为。如需长期统计，应后续通过日志采集或外部系统实现。
 
@@ -393,6 +393,7 @@ internal/httpapi/       # 对外三类兼容接口
 - 跨协议进入翻译层。
 - 返回客户端时 `model` 改回 `aliasB`。
 - 同一 API key 下相同 `aliasB` 能按优先级和连续失败次数切换。
+- 含 `*` 的通配 `aliasB` 能匹配客户端请求的 `model`（精确名优先；多通配按配置声明顺序），且对客户端透明——响应 `model` 与调用记录都记客户端发送值。
 - Anthropic `web_search` 请求能透明转发到配置的 target model。
 - Payload 规则能按 internal model id、协议、请求头、payload 条件命中，并按 `default`、`default-raw`、`override`、`override-raw`、`filter` 顺序生效。
 - 非法 raw JSON payload 规则在启动和管理 API 写入时被拒绝。

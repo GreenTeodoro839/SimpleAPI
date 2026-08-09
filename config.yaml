@@ -135,6 +135,11 @@ management:
 #         aliasB: "gpt-mini"
 #       - model: "codex-main/codex5"
 #         aliasB: "codex"
+#       # 通配 aliasB：客户端请求 deepseek-chat / deepseek-reasoner 等 deepseek-* 名字时，
+#       # 都路由到 sonnet4；响应 model 改回客户端实际请求的名字，对客户端透明。
+#       - model: "anthropic-main/sonnet4"
+#         aliasB: "deepseek-*"
+#         priority: 10
 #
 #   - name: "codex-only"
 #     key: "${CLIENT_API_KEY_CODEX}"

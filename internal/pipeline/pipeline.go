@@ -88,14 +88,16 @@ func (h *Handler) ServeProxy(c *gin.Context) {
 		return
 	}
 
-	// (6) aliasB lookup
+	// (6) aliasB lookup: exact match wins; otherwise the first wildcard aliasB
+	// (containing '*', in config declaration order) whose glob matches. aliasB
+	// stays the client-sent model string for all downstream rewrite/log usage.
 	aliasB := gjson.GetBytes(rawBody, "model").String()
 	if aliasB == "" {
 		web.WriteError(c, http.StatusBadRequest, "invalid_request",
 			"model is required", map[string]interface{}{"field": "model"})
 		return
 	}
-	candidates := kc.Routing[aliasB]
+	candidates := kc.ResolveCandidates(aliasB)
 	if len(candidates) == 0 {
 		web.WriteError(c, http.StatusNotFound, "model_not_found",
 			"model '"+aliasB+"' is not available for this API key", nil)
