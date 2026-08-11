@@ -866,6 +866,10 @@ components:
         key:
           type: string
           description: 入站 API key。
+        enabled:
+          type: boolean
+          default: true
+          description: 是否启用。缺省为 true；设为 false 时该 key 不可用，认证阶段返回 401 api_key_disabled。
         allowed_protocols:
           type: array
           items:

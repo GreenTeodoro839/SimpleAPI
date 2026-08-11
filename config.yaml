@@ -119,10 +119,12 @@ management:
 # api_keys：入站 API key，按 key 细分授权。
 #   models[].model 必须填 internal id（providerName/aliasA）；
 #   aliasB 是客户端看到的模型名（为空则等于 aliasA）；priority 越大越优先。
+#   enabled 控制是否启用（缺省 true）。设为 false 时该 key 不可用，认证即拒绝。
 # ---------------------------------------------------------------------------
 # api_keys:
 #   - name: "dev-all"
 #     key: "${CLIENT_API_KEY_DEV}"
+#     enabled: true                       # 缺省 true；false 时该 key 不可用
 #     allowed_protocols: [ "anthropic", "openai_completion", "codex" ]
 #     models:
 #       - model: "anthropic-main/sonnet4"

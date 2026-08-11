@@ -179,8 +179,19 @@ type WebSearchForward struct {
 type ClientApiKey struct {
 	Name             string        `yaml:"name"              json:"name"`
 	Key              string        `yaml:"key"               json:"key"` // expanded at load
+	Enabled          *bool         `yaml:"enabled"           json:"enabled"`
 	AllowedProtocols []string      `yaml:"allowed_protocols" json:"allowed_protocols"`
 	Models           []ClientModel `yaml:"models"            json:"models"`
+}
+
+// IsEnabled reports whether this API key is active. Omitted (nil) defaults to
+// true — a key is usable unless explicitly disabled with enabled: false. A
+// disabled key is rejected at auth time and never reaches routing.
+func (k ClientApiKey) IsEnabled() bool {
+	if k.Enabled != nil {
+		return *k.Enabled
+	}
+	return true
 }
 
 // ClientModel binds a client-visible aliasB to an internal model id.

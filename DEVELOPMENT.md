@@ -76,6 +76,8 @@ providerName/aliasA
 
 `api_keys[].models[].model` 必须填写 `providerName/aliasA`。`api_keys[].models[].aliasB` 是客户端可见模型名。
 
+`api_keys[].enabled` 控制该 key 是否启用（缺省为 `true`）。设为 `false` 时该 key 不可用：认证阶段直接拒绝，不会进入协议校验或路由。
+
 ## 5. 配置校验规则
 
 启动时必须完整校验 `config.yaml`。校验失败时打印明确错误并退出。
@@ -96,6 +98,7 @@ providerName/aliasA
 - `api_keys[].models[].model` 必须能解析到已存在的 internal model id。
 - `api_keys[].models[].priority` 缺省为 `0`。
 - `api_keys[].models[].aliasB` 缺省为目标模型的 `aliasA`。
+- `api_keys[].enabled` 缺省为 `true`；为 `false` 时该 key 在认证阶段被拒绝（不可用）。
 - `anthropic_web_search_forward.target_model` 若启用，必须指向已存在的 internal model id。
 - `payload.default-raw` 和 `payload.override-raw` 中的每个参数值必须是合法 JSON 片段。
 - `payload.*[].models[].protocol` 和 `payload.*[].models[].from-protocol` 只能是 `anthropic`、`openai_completion`、`codex`。
@@ -126,6 +129,7 @@ Authorization: Bearer <client-api-key>
 
 认证成功后，服务拿到对应的 `api_keys[]` 配置，并执行：
 
+- 该 key 必须处于启用状态（`enabled` 缺省或为 `true`）；`enabled: false` 的 key 直接返回 `401 api_key_disabled`，不可用。
 - 当前请求路径对应的 protocol 必须存在于 `allowed_protocols`。
 - 请求体里的 `model` 必须是该 key 下某个模型配置的 `aliasB`（精确名优先；否则匹配含 `*` 的通配 `aliasB`，按配置声明顺序）。
 - 选中的 `aliasB`（精确或通配）下若有多个候选，按优先级和失败状态选择实际 internal model id。

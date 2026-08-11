@@ -52,6 +52,7 @@ type wildcardRoute struct {
 type KeyContext struct {
 	Name             string
 	Key              string
+	Disabled         bool                   // true when the key is configured but enabled: false; rejected at auth
 	AllowedProtocols map[string]struct{}
 	Routing          map[string][]Candidate // exact aliasB -> candidates sorted by priority desc
 	Wildcards        []wildcardRoute        // aliasB patterns containing '*', config declaration order
@@ -137,6 +138,7 @@ func Build(cfg *config.Config) (*Indexes, error) {
 		kc := &KeyContext{
 			Name:             k.Name,
 			Key:              k.Key,
+			Disabled:         !k.IsEnabled(),
 			AllowedProtocols: make(map[string]struct{}, len(k.AllowedProtocols)),
 			Routing:          make(map[string][]Candidate),
 		}

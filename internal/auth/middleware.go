@@ -38,6 +38,11 @@ func Middleware(rt *runtime.Runtime) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
+		if kc.Disabled {
+			web.WriteError(c, http.StatusUnauthorized, "api_key_disabled", "api key is disabled", nil)
+			c.Abort()
+			return
+		}
 		reqctx.SetKeyContext(c, kc)
 		c.Next()
 	}

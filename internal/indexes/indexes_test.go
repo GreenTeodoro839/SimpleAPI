@@ -139,3 +139,49 @@ func TestAliasBEmptyFallsBackToAliasAAsExact(t *testing.T) {
 		t.Errorf("AliasBs = %v; want [real-model]", kc.AliasBs)
 	}
 }
+
+// TestAPIKeyEnabledFlag covers the enable/disable surface (DEVELOPMENT.md §5):
+// omitted enabled and enabled: true both leave the key usable (Disabled=false);
+// only an explicit enabled: false marks Disabled. The key is still indexed in
+// either case so the auth layer can return a distinct "disabled" error.
+func TestAPIKeyEnabledFlag(t *testing.T) {
+	mk := func(enabled *bool) *config.Config {
+		return &config.Config{
+			Providers: []config.Provider{
+				{Name: "p", Type: "openai_completion", URL: "u",
+					Models: []config.ProviderModel{{Model: "m"}}}, // id: p/m
+			},
+			APIKeys: []config.ClientApiKey{
+				{Name: "k", Key: "kk", Enabled: enabled,
+					Models: []config.ClientModel{{Model: "p/m"}}},
+			},
+		}
+	}
+
+	cases := []struct {
+		name    string
+		enabled *bool
+		want    bool // want Disabled
+	}{
+		{"omitted defaults to enabled", nil, false},
+		{"explicit true is enabled", boolPtr(true), false},
+		{"explicit false is disabled", boolPtr(false), true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			idx, err := Build(mk(tc.enabled))
+			if err != nil {
+				t.Fatalf("Build: %v", err)
+			}
+			kc, ok := idx.Keys["kk"]
+			if !ok {
+				t.Fatalf("disabled keys must still be indexed for a clear auth error; Keys has no kk")
+			}
+			if kc.Disabled != tc.want {
+				t.Errorf("Disabled = %v, want %v", kc.Disabled, tc.want)
+			}
+		})
+	}
+}
+
+func boolPtr(b bool) *bool { return &b }
