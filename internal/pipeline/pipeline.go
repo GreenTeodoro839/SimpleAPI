@@ -52,6 +52,10 @@ type reqMeta struct {
 	start      time.Time
 }
 
+// statusServerBusy is Anthropic's non-standard 529 "Overloaded". Go has no
+// http.Status constant for it.
+const statusServerBusy = 529
+
 var reqCounter uint64
 
 func newRequestID() string {
@@ -144,6 +148,11 @@ func (h *Handler) ServeProxy(c *gin.Context) {
 	retryCodes := snap.Config.Proxy.RetryCodes()
 	timeout := time.Duration(snap.Config.Server.RequestTimeout()) * time.Second
 	fo := h.rt.Failover()
+	lim := h.rt.Limiter()
+	// Set when a candidate was skipped only because its provider was at its
+	// concurrency limit. It outranks a plain upstream failure in the final
+	// error: "busy, retry" is the useful thing to tell the client.
+	busy := false
 
 	for _, cand := range candidates {
 		if fo.ShouldSkip(kc.Name, cand.InternalID, maxFail, resetSec) {
@@ -199,9 +208,21 @@ func (h *Handler) ServeProxy(c *gin.Context) {
 		})
 		h.logger.Debugf("outbound body [%s]: %s", rm.InternalID, string(body))
 
+		// (12) provider concurrency cap. A saturated provider is skipped like a
+		// missing translator, not recorded as a failure: being busy does not
+		// mean it is broken, so it must not trip the failover counter.
+		release, gotSlot := lim.Acquire(pe.Name, pe.MaxConcurrency)
+		if !gotSlot {
+			busy = true
+			h.logger.WithField("provider", pe.Name).WithField("model", cand.InternalID).
+				Debug("provider at concurrency limit; trying next candidate")
+			continue
+		}
+
 		if isStream {
 			idleTimeout := time.Duration(snap.Config.Server.StreamIdleTimeout()) * time.Second
 			_, cleanComplete, retryable, upStatus, counts, errMsg := h.attemptStream(c, pe, body, aliasB, rewrite, retryCodes, pair, idleTimeout)
+			release()
 			h.recordUsage(snap, rm, sourceProto, upStatus, nil, counts, retryable || !cleanComplete, meta, errMsg)
 			if retryable {
 				fo.OnFailure(kc.Name, cand.InternalID)
@@ -217,6 +238,7 @@ func (h *Handler) ServeProxy(c *gin.Context) {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
 		status, ct, respBytes, retryable, errMsg := h.attemptNonStream(ctx, pe, body, retryCodes, pair)
 		cancel()
+		release()
 		h.recordUsage(snap, rm, sourceProto, status, respBytes, usage.Counts{}, retryable, meta, errMsg)
 		if retryable {
 			fo.OnFailure(kc.Name, cand.InternalID)
@@ -237,6 +259,15 @@ func (h *Handler) ServeProxy(c *gin.Context) {
 	}
 
 	// All candidates exhausted.
+	if busy {
+		// 529 is what Anthropic clients read as "overloaded, back off and
+		// retry", which is exactly the intent of a provider concurrency cap.
+		h.logger.WithField("alias", aliasB).WithField("api_key", kc.Name).
+			Warn("all candidate providers at their concurrency limit")
+		web.WriteError(c, statusServerBusy, "server_busy",
+			"all upstream providers for model '"+aliasB+"' are at their concurrency limit", nil)
+		return
+	}
 	web.WriteError(c, http.StatusBadGateway, "no_available_upstream",
 		"no upstream candidate succeeded for model '"+aliasB+"'", nil)
 }

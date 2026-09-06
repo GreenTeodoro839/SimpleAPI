@@ -59,6 +59,10 @@ func Validate(cfg *Config) []ValidationError {
 			errs = append(errs, ve(base+".type", "invalid_provider_type",
 				fmt.Sprintf("invalid provider type %q (want anthropic|openai_completion|codex)", p.Type)))
 		}
+		if p.MaxConcurrency != nil && *p.MaxConcurrency < 0 {
+			errs = append(errs, ve(base+".max_concurrency", "invalid_max_concurrency",
+				fmt.Sprintf("max_concurrency %d must be >= 0 (0 = unlimited)", *p.MaxConcurrency)))
+		}
 
 		aliasSeen := map[string]int{}
 		for j := range p.Models {

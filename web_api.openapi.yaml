@@ -824,6 +824,13 @@ components:
           type: object
           additionalProperties:
             type: string
+        max_concurrency:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: >-
+            该 provider 同时进行的上游请求数上限。缺省或 0 = 不限制。超出时该候选被跳过
+            （不计入失败切换），所有候选都满则返回 529 server_busy。
         models:
           type: array
           items:

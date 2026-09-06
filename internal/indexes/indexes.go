@@ -29,6 +29,9 @@ type ProviderEntry struct {
 	URL     string
 	Key     string
 	Headers map[string]string
+	// MaxConcurrency caps in-flight upstream requests for this provider;
+	// 0 means unlimited.
+	MaxConcurrency int
 }
 
 // Candidate is one aliasB resolution within an API key.
@@ -115,6 +118,7 @@ func Build(cfg *config.Config) (*Indexes, error) {
 		p := &cfg.Providers[i]
 		idx.Providers[p.Name] = &ProviderEntry{
 			Name: p.Name, Type: p.Type, URL: p.URL, Key: p.Key, Headers: p.Headers,
+			MaxConcurrency: p.ConcurrencyLimit(),
 		}
 		for j := range p.Models {
 			m := &p.Models[j]

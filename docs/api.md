@@ -167,9 +167,13 @@ curl -X PUT -H "X-Admin-Key: $PROXY_ADMIN_KEY" -H "Content-Type: application/jso
 ```bash
 curl -X POST -H "X-Admin-Key: $PROXY_ADMIN_KEY" -H "Content-Type: application/json" \
   -d '{"name":"openrouter","type":"openai_completion","url":"https://openrouter.ai/api/v1",
-       "key":"sk-...","headers":{},"models":[{"model":"m","aliasA":"a"}]}' \
+       "key":"sk-...","headers":{},"max_concurrency":0,
+       "models":[{"model":"m","aliasA":"a"}]}' \
   http://127.0.0.1:8317/v0/management/providers
 ```
+
+`max_concurrency` 是该 provider 同时进行的上游请求数上限，缺省或 `0` = 不限制，负数返回 `422`。
+超出上限时该候选被跳过（不计入失败切换）并改试下一个候选，所有候选都满则返回 `529 server_busy`。
 
 - `GET /v0/management/providers/:name` —— 单个 provider（含明文 key）；不存在返回 `404`。
 - `PUT /v0/management/providers/:name` —— 替换单个 provider。
@@ -290,6 +294,7 @@ curl -H "X-Admin-Key: $PROXY_ADMIN_KEY" \
 | 502  | `no_available_upstream`    | 所有候选都失败                            |
 | 502  | `upstream_error`           | 上游调用失败                              |
 | 501  | `translation_not_supported`| 无可用的跨协议翻译器                      |
+| 529  | `server_busy`              | 所有候选 provider 都达到 `max_concurrency`，稍后重试 |
 | 422  | （`ValidationResult`）     | 管理 API 配置校验失败（返回 `valid:false` + `errors`，不走上面的 error 信封） |
 
 上游错误在同协议透传场景下会尽量原样透传，但不会泄露其他 key 或管理配置。

@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/GreenTeodoro839/SimpleAPI/internal/calllog"
+	"github.com/GreenTeodoro839/SimpleAPI/internal/concurrency"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/config"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/failover"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/indexes"
@@ -24,6 +25,7 @@ type Runtime struct {
 	failover *failover.Counter
 	usage    *usage.Recorder
 	callLog  *calllog.Recorder
+	limiter  *concurrency.Limiter
 }
 
 // New constructs a Runtime from the raw (placeholder) and expanded configs.
@@ -36,6 +38,7 @@ func New(raw, cfg *config.Config, idx *indexes.Indexes, cfgPath string) *Runtime
 		failover: failover.New(),
 		usage:    usage.NewRecorder(),
 		callLog:  calllog.NewRecorder(cfg.Proxy.CallLogMax()),
+		limiter:  concurrency.New(),
 	}
 }
 
@@ -65,3 +68,8 @@ func (r *Runtime) ConfigPath() string          { return r.cfgPath }
 func (r *Runtime) Failover() *failover.Counter { return r.failover }
 func (r *Runtime) Usage() *usage.Recorder      { return r.usage }
 func (r *Runtime) CallLog() *calllog.Recorder  { return r.callLog }
+
+// Limiter returns the per-provider concurrency limiter. Like the failover and
+// usage counters it outlives config reloads, so in-flight slots are not lost
+// when a provider's limit changes.
+func (r *Runtime) Limiter() *concurrency.Limiter { return r.limiter }

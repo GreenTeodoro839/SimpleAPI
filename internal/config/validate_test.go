@@ -72,6 +72,33 @@ func TestInvalidProviderType(t *testing.T) {
 	}
 }
 
+func TestNegativeMaxConcurrency(t *testing.T) {
+	cfg := validConfig()
+	cfg.Providers[0].MaxConcurrency = ptrInt(-1)
+	if !hasCode(Validate(cfg), "invalid_max_concurrency") {
+		t.Error("expected invalid_max_concurrency")
+	}
+}
+
+func TestMaxConcurrencyZeroAndUnsetMeanUnlimited(t *testing.T) {
+	cfg := validConfig()
+	cfg.Providers[0].MaxConcurrency = ptrInt(0)
+	if errs := Validate(cfg); len(errs) != 0 {
+		t.Fatalf("expected valid for max_concurrency=0, got: %+v", errs)
+	}
+	if got := cfg.Providers[0].ConcurrencyLimit(); got != 0 {
+		t.Errorf("ConcurrencyLimit() = %d, want 0", got)
+	}
+	cfg.Providers[0].MaxConcurrency = nil
+	if got := cfg.Providers[0].ConcurrencyLimit(); got != 0 {
+		t.Errorf("ConcurrencyLimit() with unset field = %d, want 0", got)
+	}
+	cfg.Providers[0].MaxConcurrency = ptrInt(4)
+	if got := cfg.Providers[0].ConcurrencyLimit(); got != 4 {
+		t.Errorf("ConcurrencyLimit() = %d, want 4", got)
+	}
+}
+
 func TestClientModelNotFound(t *testing.T) {
 	cfg := validConfig()
 	cfg.APIKeys[0].Models[0].Model = "p1_nonexistent"

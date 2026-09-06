@@ -79,6 +79,12 @@ curl http://127.0.0.1:8317/v1/chat/completions \
 
 `proxy.max_consecutive_failures` 控制同一候选模型的连续失败阈值；达到后，该 `aliasB` 的后续请求会跳过它、尝试下一个优先级候选。`proxy.failure_reset_seconds` 控制失败计数的自动清零（`0` = 永不清零）。失败判定包含网络错误、超时，以及 `proxy.upstream_retry_status_codes`（默认 408/429/500/502/503/504）。客户端错误（400/401/403 等）不计入上游失败。
 
+## 并发上限
+
+`providers[].max_concurrency` 限制该 provider 同时进行的上游请求数，缺省或 `0` = 不限制。名额在发起上游请求前获取、请求结束后释放，流式要整条流结束才释放。
+
+超出上限时不排队：该候选被跳过并尝试下一个候选，且**不计入连续失败**（provider 只是忙，不是坏了）。所有候选都满载时返回 `529` + `server_busy`，客户端应稍后重试。计数按 provider 记在内存里，跨配置热加载存活，改上限从下一次取名额时生效，不影响在途请求。
+
 ## 配置校验
 
 启动与管理 API 写入都会做完整校验，失败则启动退出 / 返回 `422`。硬错误包括：重复 provider `name`、同一 provider 下重复 `aliasA`、provider name 含 `/`；其余如引用不存在的模型、非法 raw JSON、payload 规则改写顶层 `model` 字段等也会被拒绝。详见 [`DEVELOPMENT.md`](DEVELOPMENT.md) §5。

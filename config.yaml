@@ -73,12 +73,16 @@ management:
 #   type ∈ anthropic | openai_completion | codex
 #   url 约定：anthropic 填 base（自动追加 /v1/messages）；openai_completion / codex 填含 /v1 的 base
 #           （分别追加 /chat/completions、/responses）。
+#   max_concurrency：该 provider 最多同时进行的上游请求数；0 或不填 = 不限制。
+#           超出时不排队：该候选被跳过（不计入失败切换），改试下一个候选；
+#           所有候选都满则直接返回 529 server_busy。流式请求整条流结束才释放名额。
 # ---------------------------------------------------------------------------
 # providers:
 #   - name: "anthropic-main"
 #     type: "anthropic"
 #     url: "https://api.anthropic.com"
 #     key: "${ANTHROPIC_API_KEY}"
+#     max_concurrency: 0                   # 0 = 不限制
 #     headers:
 #       anthropic-version: "2023-06-01"
 #     models:

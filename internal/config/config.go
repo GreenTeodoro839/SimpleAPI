@@ -154,12 +154,23 @@ type PayloadModelRule struct {
 // Provider is one upstream provider. Name and URL are required; Name must not
 // contain '/' (it forms the internal id "name/aliasA"). Each provider has exactly one key.
 type Provider struct {
-	Name    string            `yaml:"name"    json:"name"`
-	Type    string            `yaml:"type"    json:"type"`
-	URL     string            `yaml:"url"     json:"url"`
-	Key     string            `yaml:"key"     json:"key"` // expanded at load
-	Headers map[string]string `yaml:"headers" json:"headers"`
-	Models  []ProviderModel   `yaml:"models"  json:"models"`
+	Name           string            `yaml:"name"            json:"name"`
+	Type           string            `yaml:"type"            json:"type"`
+	URL            string            `yaml:"url"             json:"url"`
+	Key            string            `yaml:"key"             json:"key"` // expanded at load
+	Headers        map[string]string `yaml:"headers"         json:"headers"`
+	MaxConcurrency *int              `yaml:"max_concurrency" json:"max_concurrency"`
+	Models         []ProviderModel   `yaml:"models"          json:"models"`
+}
+
+// ConcurrencyLimit returns the maximum number of in-flight upstream requests
+// allowed for this provider. 0 -- also the value for a missing or zero field --
+// means unlimited.
+func (p Provider) ConcurrencyLimit() int {
+	if p.MaxConcurrency != nil && *p.MaxConcurrency > 0 {
+		return *p.MaxConcurrency
+	}
+	return 0
 }
 
 // ProviderModel is one upstream model under a provider.

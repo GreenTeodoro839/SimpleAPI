@@ -78,6 +78,8 @@ providerName/aliasA
 
 `api_keys[].enabled` 控制该 key 是否启用（缺省为 `true`）。设为 `false` 时该 key 不可用：认证阶段直接拒绝，不会进入协议校验或路由。
 
+`providers[].max_concurrency` 限制该 provider 同时进行的上游请求数（缺省或 `0` = 不限制），详见 §9.1。
+
 ## 5. 配置校验规则
 
 启动时必须完整校验 `config.yaml`。校验失败时打印明确错误并退出。
@@ -89,6 +91,7 @@ providerName/aliasA
 - `providers[].name` 必填，不能包含 `/`。
 - `providers[].url` 必填。
 - `providers[].type` 必须是 `anthropic`、`openai_completion`、`codex` 之一。
+- `providers[].max_concurrency` 缺省为 `0`（不限制），不能为负数。
 - provider `name` 全局唯一。
 - 同一个 provider 下，生效后的 `aliasA` 不能重复。
 - 由 `providerName/aliasA` 组成的 internal model id 必须全局唯一。
@@ -184,6 +187,18 @@ Authorization: Bearer <client-api-key>
 成功响应后，将该候选模型的连续失败计数清零。
 
 可选实现 `proxy.failure_reset_seconds`：候选模型超过该时间没有新失败，可自动清零失败状态，避免一次故障永久影响路由。
+
+### 9.1 Provider 并发上限
+
+`providers[].max_concurrency` 限制该 provider 同时进行的上游请求数，缺省或 `0` 表示不限制。
+
+名额在发出上游请求前获取，请求结束后释放；流式请求要等整条流结束才释放。
+
+超出上限时不排队：该候选被跳过，继续尝试下一个优先级候选。这与失败切换是两回事——**满载不计入连续失败计数**，因为 provider 只是忙，不是坏了，不应该因此被暂时摘除。
+
+所有候选都因为满载被跳过时，返回 `529` + `server_busy`。若同一请求里既有满载跳过、也有真实上游失败，以 `server_busy` 为准：对客户端来说"稍后重试"才是可执行的动作。
+
+并发计数在内存中按 provider name 记账，跨配置热加载存活；改动 `max_concurrency` 从下一次获取名额时生效，不影响在途请求。
 
 ## 10. Anthropic Web Search 转发
 
@@ -377,6 +392,7 @@ internal/httpapi/       # 对外三类兼容接口
 - `model_not_allowed`
 - `model_not_found`
 - `no_available_upstream`
+- `server_busy`（HTTP `529`，provider 并发上限，见 §9.1）
 - `translation_not_supported`
 - `upstream_error`
 - `config_validation_failed`
