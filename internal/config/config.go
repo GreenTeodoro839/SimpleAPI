@@ -79,7 +79,10 @@ func (p ProxyConfig) UsageEnabled() bool {
 	return true
 }
 func (p ProxyConfig) RetryCodes() []int {
-	if p.UpstreamRetryStatusCodes != nil {
+	// len > 0 rather than != nil: DeepCopy's YAML round-trip materializes an
+	// omitted (nil) slice as an empty non-nil one, which must still mean
+	// "use the default" — otherwise failover would silently retry nothing.
+	if len(p.UpstreamRetryStatusCodes) > 0 {
 		return p.UpstreamRetryStatusCodes
 	}
 	return []int{408, 429, 500, 502, 503, 504}
