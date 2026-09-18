@@ -68,6 +68,7 @@ providerName/aliasA
 - `server`：监听地址、超时。
 - `proxy`：失败切换、响应 model 重写、统计等代理行为。
 - `management`：管理 API 开关和管理密钥。
+- `request_archive`：请求存档目录；为空（或缺省整个段）不落盘，非空则每个成功返回客户端的请求写一个 JSON 文件（用户原始请求体 + 远端原始响应体，仅 2xx 落盘）。
 - `payload`：出站请求 payload 规则配置，可按模型、协议、请求头和请求体条件改写或删除字段。
 - `providers`：上游 provider 列表。
 - `api_keys`：入站 API key 及其协议、模型授权。

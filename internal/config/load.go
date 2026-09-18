@@ -37,7 +37,7 @@ func Marshal(cfg *Config) ([]byte, error) {
 
 // Expand expands ${VAR}/${VAR:-default} placeholders in every secret-bearing
 // string field in place: providers[].key, providers[].headers.*, api_keys[].key,
-// and management.admin_key.
+// management.admin_key, and request_archive.dir.
 func Expand(cfg *Config) {
 	for i := range cfg.Providers {
 		cfg.Providers[i].Key = ExpandEnv(cfg.Providers[i].Key)
@@ -49,4 +49,5 @@ func Expand(cfg *Config) {
 		cfg.APIKeys[i].Key = ExpandEnv(cfg.APIKeys[i].Key)
 	}
 	cfg.Management.AdminKey = ExpandEnv(cfg.Management.AdminKey)
+	cfg.RequestArchive.Dir = ExpandEnv(cfg.RequestArchive.Dir)
 }

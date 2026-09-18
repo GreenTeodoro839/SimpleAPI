@@ -4,15 +4,15 @@ import (
 	"testing"
 )
 
-func ptrInt(v int) *int    { return &v }
+func ptrInt(v int) *int       { return &v }
 func ptrStr(v string) *string { return &v }
-func ptrBool(v bool) *bool { return &v }
+func ptrBool(v bool) *bool    { return &v }
 
 func validConfig() *Config {
 	return &Config{
-		Version: 1,
-		Server:  ServerConfig{Listen: ptrStr("127.0.0.1:8317")},
-		Proxy:   ProxyConfig{MaxConsecutiveFailures: ptrInt(2)},
+		Version:    1,
+		Server:     ServerConfig{Listen: ptrStr("127.0.0.1:8317")},
+		Proxy:      ProxyConfig{MaxConsecutiveFailures: ptrInt(2)},
 		Management: ManagementConfig{Enabled: ptrBool(true), AdminKey: "admin"},
 		Providers: []Provider{
 			{Name: "p1", Type: "anthropic", URL: "https://a", Key: "k1",
@@ -141,10 +141,10 @@ func TestExpandEnv(t *testing.T) {
 	t.Setenv("FOO", "bar")
 	t.Setenv("EMPTY", "")
 	cases := map[string]string{
-		"${FOO}":         "bar",
-		"${MISSING}":     "",
-		"${EMPTY:-def}":  "def",
-		"${FOO:-def}":    "bar",
+		"${FOO}":          "bar",
+		"${MISSING}":      "",
+		"${EMPTY:-def}":   "def",
+		"${FOO:-def}":     "bar",
 		"pre-${FOO}-post": "pre-bar-post",
 	}
 	for in, want := range cases {
@@ -154,11 +154,45 @@ func TestExpandEnv(t *testing.T) {
 	}
 }
 
+func TestRequestArchiveDirectory(t *testing.T) {
+	var zero RequestArchiveConfig
+	if got := zero.Directory(); got != "" {
+		t.Errorf("Directory() = %q, want empty (feature off)", got)
+	}
+	cfg := RequestArchiveConfig{Dir: "/tmp/arch"}
+	if got := cfg.Directory(); got != "/tmp/arch" {
+		t.Errorf("Directory() = %q, want /tmp/arch", got)
+	}
+}
+
+func TestRequestArchiveSectionValid(t *testing.T) {
+	cfg := validConfig()
+	cfg.RequestArchive.Dir = "/tmp/arch"
+	if errs := Validate(cfg); len(errs) != 0 {
+		t.Fatalf("expected valid, got: %+v", errs)
+	}
+}
+
+func TestExpandRequestArchiveDir(t *testing.T) {
+	t.Setenv("ARCH_DIR", "/from-env")
+	cfg := &Config{RequestArchive: RequestArchiveConfig{Dir: "${ARCH_DIR}"}}
+	Expand(cfg)
+	if cfg.RequestArchive.Dir != "/from-env" {
+		t.Fatalf("Dir = %q, want /from-env", cfg.RequestArchive.Dir)
+	}
+	// An unset placeholder expands to empty, which disables archiving.
+	cfg2 := &Config{RequestArchive: RequestArchiveConfig{Dir: "${ARCH_MISSING_SAPI_TEST}"}}
+	Expand(cfg2)
+	if cfg2.RequestArchive.Dir != "" {
+		t.Fatalf("Dir = %q, want empty (unset var must disable)", cfg2.RequestArchive.Dir)
+	}
+}
+
 func TestParseInternalModelID(t *testing.T) {
 	cases := []struct {
-		in               string
-		prov, alias      string
-		ok               bool
+		in          string
+		prov, alias string
+		ok          bool
 	}{
 		{"p/a", "p", "a", true},
 		{"p/a/b", "p", "a/b", true}, // split on first slash only

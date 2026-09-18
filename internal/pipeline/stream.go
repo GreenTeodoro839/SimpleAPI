@@ -23,30 +23,33 @@ import (
 // attemptNonStream calls the upstream and reads the full body. retryable is true
 // for connection errors or retryable HTTP statuses (§9). When pair is non-nil
 // and the upstream returned 2xx, the response is translated to the client
-// protocol before return.
-func (h *Handler) attemptNonStream(ctx context.Context, pe *indexes.ProviderEntry, body []byte, retryCodes []int, pair *translate.Pair) (status int, contentType string, respBytes []byte, retryable bool, errMsg string) {
+// protocol before return. rawBytes is the pre-translation upstream body — the
+// remote's original response, identical to respBytes unless a translator
+// rewrote a 2xx body.
+func (h *Handler) attemptNonStream(ctx context.Context, pe *indexes.ProviderEntry, body []byte, retryCodes []int, pair *translate.Pair) (status int, contentType string, respBytes, rawBytes []byte, retryable bool, errMsg string) {
 	resp, err := provider.Do(ctx, pe, body)
 	if err != nil {
 		h.logger.WithError(err).WithField("provider", pe.Name).Debug("upstream non-stream call failed")
-		return 0, "", nil, true, err.Error()
+		return 0, "", nil, nil, true, err.Error()
 	}
 	defer resp.Body.Close()
 	respBytes, err = io.ReadAll(resp.Body)
 	if err != nil {
-		return 0, "", nil, true, err.Error()
+		return 0, "", nil, nil, true, err.Error()
 	}
 	if provider.IsRetryableStatus(resp.StatusCode, retryCodes) {
-		return resp.StatusCode, resp.Header.Get("Content-Type"), respBytes, true, extractErrorMessage(resp.StatusCode, respBytes)
+		return resp.StatusCode, resp.Header.Get("Content-Type"), respBytes, respBytes, true, extractErrorMessage(resp.StatusCode, respBytes)
 	}
 	if resp.StatusCode >= 400 {
-		return resp.StatusCode, resp.Header.Get("Content-Type"), respBytes, false, extractErrorMessage(resp.StatusCode, respBytes)
+		return resp.StatusCode, resp.Header.Get("Content-Type"), respBytes, respBytes, false, extractErrorMessage(resp.StatusCode, respBytes)
 	}
+	rawBytes = respBytes
 	if pair != nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		if translated, terr := pair.Response(respBytes); terr == nil {
 			respBytes = translated
 		}
 	}
-	return resp.StatusCode, resp.Header.Get("Content-Type"), respBytes, false, ""
+	return resp.StatusCode, resp.Header.Get("Content-Type"), respBytes, rawBytes, false, ""
 }
 
 // attemptStream calls the upstream and relays the SSE stream. Unlike non-stream,
@@ -55,12 +58,15 @@ func (h *Handler) attemptNonStream(ctx context.Context, pe *indexes.ProviderEntr
 // arrives for idleTimeout, the stream is aborted. Each upstream data event is
 // also mined for token usage, so streaming requests get real counts. When pair
 // is non-nil each chunk is translated; otherwise the stream passthrough-relays
-// with per-chunk model rewriting.
+// with per-chunk model rewriting. When archiveSink is non-nil, every line
+// received from the upstream is appended to it verbatim — the raw remote
+// response, before translation or model rewriting; nil disables accumulation
+// at zero cost.
 //
 // Returns committed (bytes written → cannot retry), cleanComplete, retryable,
 // the upstream HTTP status (0 if the call failed before any response), the
 // accumulated token counts, and an error reason string (empty on success).
-func (h *Handler) attemptStream(c *gin.Context, pe *indexes.ProviderEntry, body []byte, aliasB string, rewrite bool, retryCodes []int, pair *translate.Pair, idleTimeout time.Duration) (committed, cleanComplete, retryable bool, status int, counts usage.Counts, errMsg string) {
+func (h *Handler) attemptStream(c *gin.Context, pe *indexes.ProviderEntry, body []byte, aliasB string, rewrite bool, retryCodes []int, pair *translate.Pair, idleTimeout time.Duration, archiveSink *bytes.Buffer) (committed, cleanComplete, retryable bool, status int, counts usage.Counts, errMsg string) {
 	// No total deadline: the upstream call is bound to the client connection so a
 	// long-but-active stream is never cut, only a stalled one (idleTimeout).
 	resp, err := provider.Do(c.Request.Context(), pe, body)
@@ -117,6 +123,11 @@ func (h *Handler) attemptStream(c *gin.Context, pe *indexes.ProviderEntry, body 
 	}
 
 	processLine := func(line []byte) {
+		// Archive the raw upstream line before any parsing, rewriting, or
+		// translation: the sink holds the remote's original response stream.
+		if archiveSink != nil {
+			archiveSink.Write(line)
+		}
 		trimmed := bytes.TrimRight(line, "\r\n")
 		var payload []byte
 		if bytes.HasPrefix(trimmed, []byte("data:")) {

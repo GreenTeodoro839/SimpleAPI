@@ -7,12 +7,14 @@ package runtime
 import (
 	"sync"
 
+	"github.com/GreenTeodoro839/SimpleAPI/internal/archive"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/calllog"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/concurrency"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/config"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/failover"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/indexes"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/usage"
+	"github.com/sirupsen/logrus"
 )
 
 type Runtime struct {
@@ -26,10 +28,11 @@ type Runtime struct {
 	usage    *usage.Recorder
 	callLog  *calllog.Recorder
 	limiter  *concurrency.Limiter
+	archive  *archive.Writer
 }
 
 // New constructs a Runtime from the raw (placeholder) and expanded configs.
-func New(raw, cfg *config.Config, idx *indexes.Indexes, cfgPath string) *Runtime {
+func New(raw, cfg *config.Config, idx *indexes.Indexes, cfgPath string, logger *logrus.Logger) *Runtime {
 	return &Runtime{
 		raw:      raw,
 		cfg:      cfg,
@@ -39,6 +42,7 @@ func New(raw, cfg *config.Config, idx *indexes.Indexes, cfgPath string) *Runtime
 		usage:    usage.NewRecorder(),
 		callLog:  calllog.NewRecorder(cfg.Proxy.CallLogMax()),
 		limiter:  concurrency.New(),
+		archive:  archive.New(logger),
 	}
 }
 
@@ -73,3 +77,8 @@ func (r *Runtime) CallLog() *calllog.Recorder  { return r.callLog }
 // usage counters it outlives config reloads, so in-flight slots are not lost
 // when a provider's limit changes.
 func (r *Runtime) Limiter() *concurrency.Limiter { return r.limiter }
+
+// Archive returns the request-archive writer. Like the limiter it outlives
+// config reloads; whether archiving is on (and where it writes) is read per
+// request from the live snapshot's request_archive.dir.
+func (r *Runtime) Archive() *archive.Writer { return r.archive }

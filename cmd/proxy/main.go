@@ -39,7 +39,7 @@ func main() {
 	if err != nil {
 		logger.Fatalf("build indexes: %v", err)
 	}
-	rt := runtime.New(cfg, expanded, idx, *configPath)
+	rt := runtime.New(cfg, expanded, idx, *configPath, logger)
 
 	addr := *listenAddr
 	if addr == "" {

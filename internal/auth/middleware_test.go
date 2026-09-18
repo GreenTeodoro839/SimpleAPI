@@ -2,6 +2,7 @@ package auth
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"github.com/GreenTeodoro839/SimpleAPI/internal/indexes"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/runtime"
 	"github.com/gin-gonic/gin"
+	"github.com/sirupsen/logrus"
 )
 
 // buildRT builds a runtime with one provider/model and a single inbound key
@@ -31,7 +33,9 @@ func buildRT(t *testing.T, enabled *bool, keyValue string) *runtime.Runtime {
 	if err != nil {
 		t.Fatalf("indexes.Build: %v", err)
 	}
-	return runtime.New(raw, expanded, idx, "")
+	lg := logrus.New()
+	lg.SetOutput(io.Discard)
+	return runtime.New(raw, expanded, idx, "", lg)
 }
 
 // do runs the auth middleware against GET /v1/chat/completions with the given

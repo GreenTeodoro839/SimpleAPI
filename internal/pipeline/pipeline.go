@@ -6,13 +6,16 @@
 package pipeline
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"sync/atomic"
 	"time"
 
+	"github.com/GreenTeodoro839/SimpleAPI/internal/archive"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/calllog"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/indexes"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/modelrewrite"
@@ -149,6 +152,16 @@ func (h *Handler) ServeProxy(c *gin.Context) {
 	timeout := time.Duration(snap.Config.Server.RequestTimeout()) * time.Second
 	fo := h.rt.Failover()
 	lim := h.rt.Limiter()
+	// Request-archive sink: when request_archive.dir is set (non-empty) the
+	// streaming path accumulates the RAW UPSTREAM lines — the remote's original
+	// response, before translation or model rewriting. Shared across failover
+	// attempts, which is safe because a retryable attempt never commits a
+	// single byte (stream.go forces retryable when nothing was committed). nil
+	// when archiving is off keeps the hot path allocation-free.
+	var archiveSink *bytes.Buffer
+	if snap.Config.RequestArchive.Directory() != "" {
+		archiveSink = &bytes.Buffer{}
+	}
 	// Set when a candidate was skipped only because its provider was at its
 	// concurrency limit. It outranks a plain upstream failure in the final
 	// error: "busy, retry" is the useful thing to tell the client.
@@ -221,9 +234,9 @@ func (h *Handler) ServeProxy(c *gin.Context) {
 
 		if isStream {
 			idleTimeout := time.Duration(snap.Config.Server.StreamIdleTimeout()) * time.Second
-			_, cleanComplete, retryable, upStatus, counts, errMsg := h.attemptStream(c, pe, body, aliasB, rewrite, retryCodes, pair, idleTimeout)
+			_, cleanComplete, retryable, upStatus, counts, errMsg := h.attemptStream(c, pe, body, aliasB, rewrite, retryCodes, pair, idleTimeout, archiveSink)
 			release()
-			h.recordUsage(snap, rm, sourceProto, upStatus, nil, counts, retryable || !cleanComplete, meta, errMsg)
+			finalCounts := h.recordUsage(snap, rm, sourceProto, upStatus, nil, counts, retryable || !cleanComplete, meta, errMsg)
 			if retryable {
 				fo.OnFailure(kc.Name, cand.InternalID)
 				h.logger.WithField("model", cand.InternalID).Debug("stream candidate failed; trying next")
@@ -232,14 +245,23 @@ func (h *Handler) ServeProxy(c *gin.Context) {
 			if cleanComplete {
 				fo.OnSuccess(kc.Name, cand.InternalID)
 			}
+			// Archive only a 2xx committed stream: reaching here with
+			// retryable=false implies committed (stream.go forces retryable
+			// when nothing was committed). The >=400 relay is a relayed
+			// failure — no file. A 2xx stream that broke midway (client
+			// disconnect, read error, idle timeout) still archives the partial
+			// content the client received.
+			if upStatus >= 200 && upStatus < 300 {
+				h.archiveRequest(snap, meta, rm, finalCounts, rawBody, nil, archiveSink)
+			}
 			return // committed (success or mid-stream after commit): cannot retry
 		}
 
 		ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
-		status, ct, respBytes, retryable, errMsg := h.attemptNonStream(ctx, pe, body, retryCodes, pair)
+		status, ct, respBytes, rawUpstream, retryable, errMsg := h.attemptNonStream(ctx, pe, body, retryCodes, pair)
 		cancel()
 		release()
-		h.recordUsage(snap, rm, sourceProto, status, respBytes, usage.Counts{}, retryable, meta, errMsg)
+		finalCounts := h.recordUsage(snap, rm, sourceProto, status, respBytes, usage.Counts{}, retryable, meta, errMsg)
 		if retryable {
 			fo.OnFailure(kc.Name, cand.InternalID)
 			h.logger.WithField("model", cand.InternalID).Debug("non-stream candidate failed; trying next")
@@ -255,6 +277,11 @@ func (h *Handler) ServeProxy(c *gin.Context) {
 			ct = "application/json"
 		}
 		c.Data(status, ct, respBytes)
+		// Archive the remote's original response (pre-translation,
+		// pre-model-rewrite), only after the 2xx body reached the client.
+		if status >= 200 && status < 300 {
+			h.archiveRequest(snap, meta, rm, finalCounts, rawBody, rawUpstream, nil)
+		}
 		return
 	}
 
@@ -272,11 +299,63 @@ func (h *Handler) ServeProxy(c *gin.Context) {
 		"no upstream candidate succeeded for model '"+aliasB+"'", nil)
 }
 
+// archiveRequest enqueues the conversation for on-disk archiving: the user's
+// original request body plus the remote's original response. Called exactly
+// once per client request, only after a successful (2xx) response was
+// committed to the client: response is the upstream's exact non-stream body —
+// pre-translation, pre-model-rewrite (responseStream nil) — or responseStream
+// holds the accumulated raw upstream SSE text (response nil). It self-checks
+// request_archive.dir — a request that started with archiving off stays off
+// for its whole lifetime, even across reloads — and never blocks; the writer
+// drops on a full queue or write error. The byte slices are retained by the
+// writer goroutine after ServeProxy returns, which is safe because nothing
+// mutates them afterwards.
+func (h *Handler) archiveRequest(snap runtime.Snapshot, meta reqMeta, rm *indexes.ResolvedModel, counts usage.Counts, request, response []byte, responseStream *bytes.Buffer) {
+	dir := snap.Config.RequestArchive.Directory()
+	if dir == "" {
+		return
+	}
+	rec := archive.Record{
+		Dir:           dir,
+		Timestamp:     meta.start,
+		RequestID:     meta.requestID,
+		APIKey:        meta.apiKeyName,
+		Model:         meta.aliasB,
+		InternalModel: rm.InternalID,
+		ProviderType:  rm.ProviderType,
+		Tokens: archive.Tokens{
+			InputTokens:         counts.Input,
+			OutputTokens:        counts.Output,
+			CacheReadTokens:     counts.CacheRead,
+			CacheCreationTokens: counts.CacheCreation,
+			CachedTokens:        counts.Cached,
+			ReasoningTokens:     counts.Reasoning,
+			TotalTokens:         counts.Total,
+		},
+		Request: json.RawMessage(request),
+	}
+	if responseStream != nil {
+		s := responseStream.String() // one copy per archived stream; keeps the record self-owned
+		rec.ResponseStream = &s
+	} else {
+		// An empty body (204 No Content, or a 200 with no payload) archives as
+		// JSON null: an empty non-nil json.RawMessage instead fails MarshalIndent
+		// ("unexpected end of JSON input") and drops the whole record.
+		if len(response) == 0 {
+			response = nil
+		}
+		rec.Response = json.RawMessage(response)
+	}
+	h.rt.Archive().Record(rec)
+}
+
 // recordUsage records one upstream attempt: into the usage aggregate (when
 // enabled) and into the call-log ring buffer (when enabled). The two are
 // independent. For streaming attempts body is nil and mined holds the counts
 // parsed from SSE events; for non-stream attempts body is parsed for usage.
-func (h *Handler) recordUsage(snap runtime.Snapshot, rm *indexes.ResolvedModel, sourceProto string, status int, body []byte, mined usage.Counts, failed bool, meta reqMeta, errMsg string) {
+// It returns the finalized counts — the same numbers the call-log entry
+// records — so callers such as the request archive reuse identical values.
+func (h *Handler) recordUsage(snap runtime.Snapshot, rm *indexes.ResolvedModel, sourceProto string, status int, body []byte, mined usage.Counts, failed bool, meta reqMeta, errMsg string) usage.Counts {
 	counts := mined
 	if body != nil {
 		if node, ok := usageNodeForBody(body, rm.ProviderType); ok && node.Exists() {
@@ -325,4 +404,5 @@ func (h *Handler) recordUsage(snap runtime.Snapshot, rm *indexes.ResolvedModel, 
 			},
 		})
 	}
+	return counts
 }

@@ -622,6 +622,8 @@ components:
           $ref: "#/components/schemas/ProxyConfig"
         management:
           $ref: "#/components/schemas/ManagementConfig"
+        request_archive:
+          $ref: "#/components/schemas/RequestArchiveConfig"
         payload:
           $ref: "#/components/schemas/PayloadConfig"
         providers:
@@ -687,6 +689,18 @@ components:
         admin_key:
           type: string
           description: 可使用环境变量占位符。
+
+    RequestArchiveConfig:
+      type: object
+      additionalProperties: false
+      description: >
+        请求存档：每个成功（2xx 已返回客户端）的请求按一请求一文件写入 dir，
+        记录用户原始请求体与远端原始响应体（未经协议翻译与模型改写，流式为上游 SSE 原文）；
+        失败请求不落盘。dir 为空或不配置即关闭。
+      properties:
+        dir:
+          type: string
+          description: 落盘目录，可使用环境变量占位符；运行期热生效。
 
     PayloadConfig:
       type: object

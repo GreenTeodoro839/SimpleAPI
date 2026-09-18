@@ -19,6 +19,7 @@
 - **管理 API**：在线增删改 provider / key / payload、整体替换配置、reload、查看 usage 与调用记录，原子写回 `config.yaml` 并热生效。
 - **内存用量统计**：按 provider / `aliasA` / internal id 聚合（**不**用 `aliasB`），含缓存/推理/总 token 维度，重启丢失。
 - **调用记录**：最近的每条上游尝试（含 token 明细、延迟、状态、`request_id`），内存环形缓冲，重启丢失。
+- **请求存档**：配置 `request_archive.dir` 后，每个成功（2xx 已返回客户端）的请求按"一请求一文件"落盘为 JSON：调用时间、模型、token 用量，加用户的完整原始请求体与远端的完整原始响应体（未经协议翻译与模型改写；流式为上游 SSE 原文），不截断；失败请求不落盘。目录 0700、文件 0600，随 reload 热生效。
 
 ## 模型身份
 

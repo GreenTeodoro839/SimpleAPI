@@ -13,9 +13,12 @@ type Config struct {
 	Server     ServerConfig     `yaml:"server"      json:"server"`
 	Proxy      ProxyConfig      `yaml:"proxy"       json:"proxy"`
 	Management ManagementConfig `yaml:"management"  json:"management"`
-	Payload    PayloadConfig    `yaml:"payload"     json:"payload"`
-	Providers  []Provider       `yaml:"providers"   json:"providers"`
-	APIKeys    []ClientApiKey   `yaml:"api_keys"    json:"api_keys"`
+	// RequestArchive persists successful client conversations to disk, one JSON
+	// file per request. Empty dir = feature off.
+	RequestArchive RequestArchiveConfig `yaml:"request_archive" json:"request_archive"`
+	Payload        PayloadConfig        `yaml:"payload"     json:"payload"`
+	Providers      []Provider           `yaml:"providers"   json:"providers"`
+	APIKeys        []ClientApiKey       `yaml:"api_keys"    json:"api_keys"`
 }
 
 // ServerConfig controls the HTTP listener.
@@ -117,6 +120,19 @@ func (m ManagementConfig) Base() string {
 	}
 	return "/v0/management"
 }
+
+// RequestArchiveConfig controls on-disk archiving of proxied conversations:
+// every client request that received a successful (2xx) response is written as
+// one JSON file (timestamp, models, token usage, and the full client-visible
+// request/response bodies — never truncated; failed requests produce no file).
+type RequestArchiveConfig struct {
+	Dir string `yaml:"dir" json:"dir"` // expanded at load; empty = no archiving
+}
+
+// Directory returns the archive directory verbatim. There is deliberately no
+// default: an empty value means the feature is off (single-knob style, like
+// call_log_max_entries: 0).
+func (r RequestArchiveConfig) Directory() string { return r.Dir }
 
 // PayloadConfig holds the five ordered outbound-payload rule lists (§11).
 // YAML keys for the raw phases use hyphens.
