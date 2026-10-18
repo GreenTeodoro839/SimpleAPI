@@ -1,7 +1,7 @@
 // Package pipeline orchestrates a single proxied request: protocol/model
-// authorization, aliasB→internal-model routing with failover, web-search
-// forwarding, outbound model rewrite, passthrough vs translation, payload
-// rules, the upstream call, response model rewrite, and usage recording.
+// authorization, aliasB→internal-model routing with failover, outbound model
+// rewrite, passthrough vs translation, payload rules, the upstream call,
+// response model rewrite, and usage recording.
 // Steps are numbered per DEVELOPMENT.md §8.
 package pipeline
 
@@ -20,13 +20,11 @@ import (
 	"github.com/GreenTeodoro839/SimpleAPI/internal/indexes"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/modelrewrite"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/payload"
-	"github.com/GreenTeodoro839/SimpleAPI/internal/protocol"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/reqctx"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/runtime"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/translate"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/usage"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/web"
-	"github.com/GreenTeodoro839/SimpleAPI/internal/websearch"
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 	"github.com/tidwall/gjson"
@@ -144,7 +142,7 @@ func (h *Handler) ServeProxy(c *gin.Context) {
 		return
 	}
 
-	// (7)+(9)+(12)+(13)+(14) candidate loop with failover.
+	// (7)-(13) candidate loop with failover.
 	maxFail := snap.Config.Proxy.MaxFailures()
 	resetSec := snap.Config.Proxy.FailureReset()
 	rewrite := snap.Config.Proxy.RewriteModel()
@@ -177,17 +175,7 @@ func (h *Handler) ServeProxy(c *gin.Context) {
 			continue
 		}
 
-		// (8) anthropic web_search forwarding: reroute to the configured target.
-		// Body is unchanged; only the selected model/provider changes.
-		if sourceProto == protocol.Anthropic {
-			if tgt := websearch.ResolveForward(rm, rawBody, snap.Indexes.Models); tgt != nil {
-				h.logger.WithField("from", rm.InternalID).WithField("to", tgt.InternalID).Debug("web_search forward")
-				rm = tgt
-				pe = snap.Indexes.Providers[rm.ProviderName]
-			}
-		}
-
-		// (10) passthrough vs translation: resolve a translator for cross-protocol.
+		// (9) passthrough vs translation: resolve a translator for cross-protocol.
 		var pair *translate.Pair
 		if rm.ProviderType != sourceProto {
 			p, ok := translate.Get(translate.Protocol(sourceProto), translate.Protocol(rm.ProviderType))
@@ -197,9 +185,9 @@ func (h *Handler) ServeProxy(c *gin.Context) {
 			pair = p
 		}
 
-		// (9) outbound model rewrite for this candidate.
+		// (8) outbound model rewrite for this candidate.
 		body, _ := sjson.SetBytes(rawBody, "model", rm.UpstreamModel)
-		// (10 cont.) translate the request body to the upstream protocol.
+		// (10) translate the request body to the upstream protocol.
 		if pair != nil {
 			tb, terr := pair.Request(body)
 			if terr != nil {
@@ -209,7 +197,7 @@ func (h *Handler) ServeProxy(c *gin.Context) {
 			}
 			body = tb
 		}
-		// (11) payload rules (§11): default → default-raw → override → override-raw → filter.
+		// (11) payload rules (§10): default → default-raw → override → override-raw → filter.
 		engine := payload.NewEngine(&snap.Config.Payload)
 		body = engine.Apply(body, payload.MatchContext{
 			InternalID:    rm.InternalID,

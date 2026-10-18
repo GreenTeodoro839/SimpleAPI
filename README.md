@@ -2,7 +2,7 @@
 
 轻量级 AI 协议代理，用 Go 编写。只读 `config.yaml`、不引入数据库，把三类主流大模型 API 统一成三个客户端兼容接口，并按入站 API key 细分授权。
 
-设计参考 [CLIProxyAPI](https://github.com/GreenTeodoro839/CLIProxyAPI) 的协议兼容、模型别名、失败切换与 Anthropic `web_search` 透明转发，但刻意去掉了多账号 OAuth、数据库、插件、多 provider 聚合等能力，保持单文件配置、易部署。
+设计参考 [CLIProxyAPI](https://github.com/GreenTeodoro839/CLIProxyAPI) 的协议兼容、模型别名、失败切换，但刻意去掉了多账号 OAuth、数据库、插件、多 provider 聚合等能力，保持单文件配置、易部署。
 
 - 完整规格见 [`DEVELOPMENT.md`](DEVELOPMENT.md)
 - 接口契约见 [`web_api.openapi.yaml`](web_api.openapi.yaml)
@@ -15,7 +15,6 @@
 - **模型别名路由**：客户端用 `aliasB` 调用，路由到 `providerName/aliasA`，响应里的 `model` 自动改回 `aliasB`。
 - **按 API key 授权**：每个入站 key 单独配置允许的协议与模型；同一 `aliasB` 可挂多个候选，按 `priority` 排序，连续失败自动切换。
 - **Payload 规则**：`default / default-raw / override / override-raw / filter` 五类，按 internal id / 协议 / 请求头 / payload 内容匹配，用 JSON path 改写出站请求体。
-- **Anthropic web_search 透明转发**：带 `web_search_*` 工具的请求可转发到指定 target 模型。
 - **管理 API**：在线增删改 provider / key / payload、整体替换配置、reload、查看 usage 与调用记录，原子写回 `config.yaml` 并热生效。
 - **内存用量统计**：按 provider / `aliasA` / internal id 聚合（**不**用 `aliasB`），含缓存/推理/总 token 维度，重启丢失。
 - **调用记录**：最近的每条上游尝试（含 token 明细、延迟、状态、`request_id`），内存环形缓冲，重启丢失。

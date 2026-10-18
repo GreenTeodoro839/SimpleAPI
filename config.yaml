@@ -102,19 +102,6 @@ request_archive:
 #     models:
 #       - model: "claude-sonnet-4-20250514"   # 上游真实模型名
 #         aliasA: "sonnet4"                    # 内部别名，为空则等于 model
-#         # anthropic_web_search_forward:      # 可选：把带 web_search 工具的请求转发到 target
-#         #   enabled: true
-#         #   target_model: "anthropic-search/sonnet4-search"
-#
-#   - name: "anthropic-search"
-#     type: "anthropic"
-#     url: "https://api.anthropic.com"
-#     key: "${ANTHROPIC_SEARCH_API_KEY}"
-#     headers: { anthropic-version: "2023-06-01" }
-#     models:
-#       - model: "claude-sonnet-4-20250514"
-#         aliasA: "sonnet4-search"
-#
 #   - name: "openai-main"
 #     type: "openai_completion"
 #     url: "https://api.openai.com/v1"
@@ -148,7 +135,7 @@ request_archive:
 #       - model: "anthropic-main/sonnet4"
 #         aliasB: "claude"
 #         priority: 100
-#       - model: "anthropic-search/sonnet4-search"   # 同 aliasB 多候选：主用 sonnet4，失败后切 sonnet4-search
+#       - model: "openai-main/gpt41mini"   # 同 aliasB 多候选：主用 sonnet4，失败后跨协议切到 gpt41mini
 #         aliasB: "claude"
 #         priority: 50
 #       - model: "openai-main/gpt41mini"

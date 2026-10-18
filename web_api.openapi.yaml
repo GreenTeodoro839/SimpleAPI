@@ -861,20 +861,6 @@ components:
         aliasA:
           type: string
           description: 内部别名；为空时默认等于 model。
-        anthropic_web_search_forward:
-          $ref: "#/components/schemas/WebSearchForward"
-
-    WebSearchForward:
-      type: object
-      required: [enabled]
-      additionalProperties: false
-      properties:
-        enabled:
-          type: boolean
-        target_model:
-          type: string
-          pattern: "^[^/]+/.+$"
-          description: 目标 internal model id，即 providerName/aliasA。
 
     ClientApiKey:
       type: object

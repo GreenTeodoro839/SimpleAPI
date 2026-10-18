@@ -107,14 +107,6 @@ func TestClientModelNotFound(t *testing.T) {
 	}
 }
 
-func TestWebSearchSelfLoop(t *testing.T) {
-	cfg := validConfig()
-	cfg.Providers[0].Models[0].AnthropicWebSearchForward = &WebSearchForward{Enabled: true, TargetModel: "p1/a1"}
-	if !hasCode(Validate(cfg), "invalid_web_search_target") {
-		t.Error("expected invalid_web_search_target for self-loop")
-	}
-}
-
 func TestPayloadRawJSONInvalid(t *testing.T) {
 	cfg := validConfig()
 	cfg.Payload.OverrideRaw = []PayloadRule{{

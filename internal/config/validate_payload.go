@@ -7,7 +7,7 @@ import (
 	"github.com/GreenTeodoro839/SimpleAPI/internal/protocol"
 )
 
-// validatePayload validates the five payload rule lists (§5, §11): raw-fragment
+// validatePayload validates the five payload rule lists (§5, §10): raw-fragment
 // values must be valid JSON, no rule may target the top-level model field, and
 // protocol/from-protocol values must be in the enum.
 func validatePayload(pc PayloadConfig) []ValidationError {

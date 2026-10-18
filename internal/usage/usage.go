@@ -1,5 +1,5 @@
 // Package usage records in-memory request statistics aggregated by internal
-// model dimensions (DEVELOPMENT.md §13). aliasB is intentionally NOT a key.
+// model dimensions (DEVELOPMENT.md §12). aliasB is intentionally NOT a key.
 // Counters live only in memory and are lost on restart.
 package usage
 

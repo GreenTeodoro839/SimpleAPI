@@ -135,33 +135,6 @@ func Validate(cfg *Config) []ValidationError {
 		}
 	}
 
-	// --- web_search targets (second pass: all internal ids now known) ---
-	for i := range cfg.Providers {
-		p := &cfg.Providers[i]
-		for j := range p.Models {
-			m := &p.Models[j]
-			w := m.AnthropicWebSearchForward
-			if w == nil || !w.Enabled {
-				continue
-			}
-			wbase := fmt.Sprintf("providers[%d].models[%d].anthropic_web_search_forward.target_model", i, j)
-			currentID := ModelInternalID(p.Name, *m)
-			if w.TargetModel == "" {
-				errs = append(errs, ve(wbase, "invalid_web_search_target", "target_model is required when enabled"))
-				continue
-			}
-			if w.TargetModel == currentID {
-				errs = append(errs, ve(wbase, "invalid_web_search_target",
-					"target_model must differ from the current model to avoid a self-loop"))
-				continue
-			}
-			if _, exists := internalIDs[w.TargetModel]; !exists {
-				errs = append(errs, ve(wbase, "invalid_web_search_target",
-					fmt.Sprintf("target_model %q does not resolve to a known internal model id", w.TargetModel)))
-			}
-		}
-	}
-
 	// --- payload rules ---
 	errs = append(errs, validatePayload(cfg.Payload)...)
 

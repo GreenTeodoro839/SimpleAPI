@@ -14,12 +14,11 @@ import (
 
 // ResolvedModel is an upstream model with all defaults applied.
 type ResolvedModel struct {
-	ProviderName    string
-	ProviderType    string
-	UpstreamModel   string
-	AliasA          string // effective alias (model name when aliasA was empty)
-	InternalID      string // providerName + "/" + AliasA
-	WebSearch       *config.WebSearchForward
+	ProviderName  string
+	ProviderType  string
+	UpstreamModel string
+	AliasA        string // effective alias (model name when aliasA was empty)
+	InternalID    string // providerName + "/" + AliasA
 }
 
 // ProviderEntry is one upstream provider with resolved auth material.
@@ -55,7 +54,7 @@ type wildcardRoute struct {
 type KeyContext struct {
 	Name             string
 	Key              string
-	Disabled         bool                   // true when the key is configured but enabled: false; rejected at auth
+	Disabled         bool // true when the key is configured but enabled: false; rejected at auth
 	AllowedProtocols map[string]struct{}
 	Routing          map[string][]Candidate // exact aliasB -> candidates sorted by priority desc
 	Wildcards        []wildcardRoute        // aliasB patterns containing '*', config declaration order
@@ -96,11 +95,11 @@ func (kc *KeyContext) addWildcardCandidate(pattern string, cand Candidate) {
 
 // Indexes is the immutable set of lookup tables built from one config revision.
 type Indexes struct {
-	Providers     map[string]*ProviderEntry
-	Models        map[string]*ResolvedModel
-	Keys          map[string]*KeyContext // expanded key string -> context
-	KeyByName     map[string]*KeyContext
-	InternalIDs   []string // sorted, for /v0/management/models
+	Providers   map[string]*ProviderEntry
+	Models      map[string]*ResolvedModel
+	Keys        map[string]*KeyContext // expanded key string -> context
+	KeyByName   map[string]*KeyContext
+	InternalIDs []string // sorted, for /v0/management/models
 }
 
 // Build constructs Indexes from a config that has already passed Validate.
@@ -130,7 +129,6 @@ func Build(cfg *config.Config) (*Indexes, error) {
 				UpstreamModel: m.Model,
 				AliasA:        eff,
 				InternalID:    id,
-				WebSearch:     m.AnthropicWebSearchForward,
 			}
 			idx.InternalIDs = append(idx.InternalIDs, id)
 		}

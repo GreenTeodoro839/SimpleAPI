@@ -1,5 +1,5 @@
 // Package payload applies the configured outbound-payload rules to the final
-// JSON body sent upstream (DEVELOPMENT.md §11). The five phases run in a fixed
+// JSON body sent upstream (DEVELOPMENT.md §10). The five phases run in a fixed
 // order: default, default-raw, override, override-raw, filter.
 package payload
 
@@ -13,7 +13,7 @@ import (
 
 // MatchContext is what a rule is matched against.
 type MatchContext struct {
-	InternalID    string         // target model after web-search forwarding
+	InternalID    string // internal model id of the outbound target (providerName/aliasA)
 	AliasA        string
 	UpstreamModel string
 	Protocol      string // outbound provider type
@@ -106,4 +106,3 @@ func gjsonEquals(res gjson.Result, val interface{}) bool {
 }
 
 // glob wildcard handling lives in internal/glob (shared with aliasB routing).
-

@@ -2,7 +2,7 @@ package pipeline
 
 // Corner-case additions for the request-archive pipeline hooks: degenerate
 // bodies, cross-protocol stream accumulation, failover residue, saturation,
-// web-search forwarding, reload snapshot consistency, and large payloads.
+// reload snapshot consistency, and large payloads.
 
 import (
 	"bytes"
@@ -395,54 +395,6 @@ func TestArchiveBusy529WritesNothing(t *testing.T) {
 	if got := archiveCount(t, dir); got != 1 {
 		t.Fatalf("archive files = %d, want 1 (only the request that reached an upstream)", got)
 	}
-}
-
-// anthropic web_search forward: the archived internal_model must be the
-// forward TARGET that actually served, not the originally routed model.
-func TestArchiveWebSearchForwardRecordsTarget(t *testing.T) {
-	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"id":"msg_1","type":"message","role":"assistant","model":"m2","content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":5,"output_tokens":3}}`)
-	}))
-	defer up.Close()
-
-	dir := t.TempDir()
-	rt, h, idx := newArchiveRT(t, up.URL, dir, func(c *config.Config) {
-		c.Providers = []config.Provider{
-			{Name: "p", Type: "anthropic", URL: up.URL,
-				Models: []config.ProviderModel{{Model: "m",
-					AnthropicWebSearchForward: &config.WebSearchForward{Enabled: true, TargetModel: "p2/m2"}}}},
-			{Name: "p2", Type: "anthropic", URL: up.URL,
-				Models: []config.ProviderModel{{Model: "m2"}}},
-		}
-		c.APIKeys[0] = config.ClientApiKey{Name: "k", Key: "kk",
-			AllowedProtocols: []string{"anthropic"},
-			Models:           []config.ClientModel{{Model: "p/m", AliasB: "alias"}}}
-	})
-	body := []byte(`{"model":"alias","max_tokens":8,"messages":[{"role":"user","content":"search"}],"tools":[{"type":"web_search_20250305","name":"web_search"}]}`)
-	w := serveChatProto(t, h, idx, body, protocol.Anthropic, "/v1/messages")
-	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
-	}
-	rt.Archive().Close()
-
-	rec := readOneArchive(t, dir)
-	if rec.InternalModel != "p2/m2" {
-		t.Errorf("internal_model = %q, want p2/m2 (the web_search forward target)", rec.InternalModel)
-	}
-	if rec.Model != "alias" {
-		t.Errorf("model = %q, want alias", rec.Model)
-	}
-	if rec.ProviderType != "anthropic" {
-		t.Errorf("provider_type = %q, want anthropic", rec.ProviderType)
-	}
-	if rec.Tokens.InputTokens != 5 || rec.Tokens.OutputTokens != 3 || rec.Tokens.TotalTokens != 8 {
-		t.Errorf("tokens: %+v", rec.Tokens)
-	}
-	jsonSemanticEqual(t, rec.Request, body, "request")
-	// The remote's original body: the model stays the forward target's
-	// upstream name ("m2"), not the aliasB the client saw.
-	jsonSemanticEqual(t, rec.Response, []byte(`{"id":"msg_1","type":"message","role":"assistant","model":"m2","content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":5,"output_tokens":3}}`), "response")
 }
 
 // Reload semantics (rt.Replace mirrors a management PUT): each request

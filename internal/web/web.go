@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// WriteError emits the standard proxy error envelope (DEVELOPMENT.md §16):
+// WriteError emits the standard proxy error envelope (DEVELOPMENT.md §15):
 //
 //	{"error":{"code":..,"message":..,"details":{}}}
 func WriteError(c *gin.Context, status int, code, message string, details map[string]interface{}) {

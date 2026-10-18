@@ -305,5 +305,5 @@ curl -H "X-Admin-Key: $PROXY_ADMIN_KEY" \
 
 - 所有写管理接口都遵循"先合成完整配置 → 完整校验 → 原子写盘 → 重建索引"的顺序，校验失败时磁盘文件与运行时状态都不变。
 - `provider.name` 不能含 `/`（用于 internal id 切分）；可以含 `_`。
-- `api_keys[].models[].model` 与 `anthropic_web_search_forward.target_model` 必须填已存在的 internal id（`providerName/aliasA`）。
+- `api_keys[].models[].model` 必须填已存在的 internal id（`providerName/aliasA`）。
 - payload 规则的 `params` 不允许修改或删除顶层 `model` 字段（防止绕过路由与别名）。

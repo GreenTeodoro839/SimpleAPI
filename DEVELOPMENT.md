@@ -14,7 +14,7 @@
 - `openai_completion`
 - `codex`
 
-设计参考 CLIProxyAPI 的协议兼容、模型别名、失败切换和 Anthropic `web_search` 透明转发思路，但刻意去掉多账号 OAuth、数据库、复杂控制台、插件、多 provider 扩展等能力。
+设计参考 CLIProxyAPI 的协议兼容、模型别名、失败切换思路，但刻意去掉多账号 OAuth、数据库、复杂控制台、插件、多 provider 扩展等能力。
 
 ## 2. 非目标
 
@@ -103,7 +103,6 @@ providerName/aliasA
 - `api_keys[].models[].priority` 缺省为 `0`。
 - `api_keys[].models[].aliasB` 缺省为目标模型的 `aliasA`。
 - `api_keys[].enabled` 缺省为 `true`；为 `false` 时该 key 在认证阶段被拒绝（不可用）。
-- `anthropic_web_search_forward.target_model` 若启用，必须指向已存在的 internal model id。
 - `payload.default-raw` 和 `payload.override-raw` 中的每个参数值必须是合法 JSON 片段。
 - `payload.*[].models[].protocol` 和 `payload.*[].models[].from-protocol` 只能是 `anthropic`、`openai_completion`、`codex`。
 - `payload.*[].params` 不允许修改或删除顶层 `model` 字段，防止绕过路由和别名规则。
@@ -201,36 +200,9 @@ Authorization: Bearer <client-api-key>
 
 并发计数在内存中按 provider name 记账，跨配置热加载存活；改动 `max_concurrency` 从下一次获取名额时生效，不影响在途请求。
 
-## 10. Anthropic Web Search 转发
+## 10. Payload 规则配置
 
-Anthropic 请求中如果包含 server-side web search 工具，例如：
-
-```json
-{"type": "web_search_20250305"}
-```
-
-且当前选中的 provider model 配置了：
-
-```yaml
-anthropic_web_search_forward:
-  enabled: true
-  target_model: "providerName/aliasA"
-```
-
-则该请求改为转发到 `target_model`。
-
-行为要求：
-
-- 只检查 Anthropic 协议请求。
-- `tools[].type` 以 `web_search` 开头即视为触发。
-- 请求体保持原样，仅路由目标和上游真实 `model` 改变。
-- 如果目标模型等于当前模型，不转发，避免自循环。
-- 返回客户端时，`model` 仍改回原始 `aliasB`，让转发对客户端透明。
-- 统计记录实际承接请求的 target model 的 provider、`aliasA` 和真实模型。
-
-## 11. Payload 规则配置
-
-Payload 规则用于在请求已经完成鉴权、模型路由、`web_search` 转发决策、协议翻译和上游真实 `model` 改写之后，对最终发给上游的 JSON payload 做显式调整。
+Payload 规则用于在请求已经完成鉴权、模型路由、协议翻译和上游真实 `model` 改写之后，对最终发给上游的 JSON payload 做显式调整。
 
 支持五类规则，执行顺序固定为：
 
@@ -296,9 +268,7 @@ payload:
         "response_format": "{\"type\":\"json_object\"}"
 ```
 
-如果 Anthropic `web_search` 触发转发，payload 规则应以最终承接请求的 target model 作为模型匹配对象，但 `from-protocol` 仍保留客户端原始协议。
-
-## 12. 协议翻译边界
+## 11. 协议翻译边界
 
 同协议不做字段重组，只处理认证头、URL、`model` 重写、显式配置的 payload 规则、响应 `model` 重写。
 
@@ -313,7 +283,7 @@ payload:
 
 跨协议翻译失败时返回 `400` 或 `501`，不要伪造上游错误。
 
-## 13. 使用统计
+## 12. 使用统计
 
 统计维度必须使用内部模型维度：
 
@@ -331,7 +301,7 @@ payload:
 
 由于不使用数据库，统计默认只保存在内存中。重启丢失是可接受行为。如需长期统计，应后续通过日志采集或外部系统实现。
 
-## 14. 管理 API 行为
+## 13. 管理 API 行为
 
 管理 API 只操作 `config.yaml` 和当前内存配置。
 
@@ -353,7 +323,7 @@ X-Admin-Key: <admin-key>
 
 默认不要对公网开放管理 API。推荐监听 `127.0.0.1`，或由反向代理负责 TLS 和访问控制。
 
-## 15. 建议目录结构
+## 14. 建议目录结构
 
 ```text
 cmd/proxy/              # 程序入口
@@ -363,7 +333,6 @@ internal/router/        # aliasB -> internal model id 路由与失败切换
 internal/provider/      # provider 请求执行
 internal/translate/     # 三种协议之间的翻译
 internal/payload/       # payload 规则匹配、校验和 JSON path 改写
-internal/websearch/     # Anthropic web_search 触发检测和转发决策
 internal/usage/         # 内存统计
 internal/management/    # 管理 API
 internal/httpapi/       # 对外三类兼容接口
@@ -371,7 +340,7 @@ internal/httpapi/       # 对外三类兼容接口
 
 以上只是组织建议，不代表必须拆成这些包。
 
-## 16. 错误响应约定
+## 15. 错误响应约定
 
 代理自身产生的错误统一返回 JSON：
 
@@ -400,7 +369,7 @@ internal/httpapi/       # 对外三类兼容接口
 
 上游错误同协议场景可尽量透传，但不得泄露其他 API key 或管理配置。
 
-## 17. 验收标准
+## 16. 验收标准
 
 第一版完成时至少满足：
 
@@ -415,7 +384,6 @@ internal/httpapi/       # 对外三类兼容接口
 - 返回客户端时 `model` 改回 `aliasB`。
 - 同一 API key 下相同 `aliasB` 能按优先级和连续失败次数切换。
 - 含 `*` 的通配 `aliasB` 能匹配客户端请求的 `model`（精确名优先；多通配按配置声明顺序），且对客户端透明——响应 `model` 与调用记录都记客户端发送值。
-- Anthropic `web_search` 请求能透明转发到配置的 target model。
 - Payload 规则能按 internal model id、协议、请求头、payload 条件命中，并按 `default`、`default-raw`、`override`、`override-raw`、`filter` 顺序生效。
 - 非法 raw JSON payload 规则在启动和管理 API 写入时被拒绝。
 - 使用统计聚合使用 `aliasA` / internal model id，而不是 `aliasB`。

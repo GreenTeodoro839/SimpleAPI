@@ -1,4 +1,4 @@
-// Package management implements the management API (DEVELOPMENT.md §14). Health
+// Package management implements the management API (DEVELOPMENT.md §13). Health
 // is wired first; the remaining endpoints and admin-key middleware land in
 // later phases.
 package management
