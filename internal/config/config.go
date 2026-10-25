@@ -170,16 +170,31 @@ type PayloadModelRule struct {
 	NotExist     []string                 `yaml:"not-exist"     json:"not-exist"`
 }
 
-// Provider is one upstream provider. Name and URL are required; Name must not
-// contain '/' (it forms the internal id "name/aliasA"). Each provider has exactly one key.
+// Provider is one upstream provider. Type selects the default translation
+// target; URLs optionally supplies native endpoints for each protocol. Name must
+// not contain '/' (it forms "name/aliasA"). All endpoints share one key.
 type Provider struct {
 	Name           string            `yaml:"name"            json:"name"`
 	Type           string            `yaml:"type"            json:"type"`
 	URL            string            `yaml:"url"             json:"url"`
+	URLs           map[string]string `yaml:"urls,omitempty"  json:"urls,omitempty"`
 	Key            string            `yaml:"key"             json:"key"` // expanded at load
 	Headers        map[string]string `yaml:"headers"         json:"headers"`
 	MaxConcurrency *int              `yaml:"max_concurrency" json:"max_concurrency"`
 	Models         []ProviderModel   `yaml:"models"          json:"models"`
+}
+
+// UpstreamFor selects the native endpoint whenever it is configured. Otherwise
+// it falls back to Type and that protocol's URL (or the legacy URL). Selection
+// depends only on configuration, never on an upstream request's success/failure.
+func (p Provider) UpstreamFor(clientProtocol string) (upstreamProtocol, baseURL string) {
+	if u := p.URLs[clientProtocol]; u != "" {
+		return clientProtocol, u
+	}
+	if u := p.URLs[p.Type]; u != "" {
+		return p.Type, u
+	}
+	return p.Type, p.URL
 }
 
 // ConcurrencyLimit returns the maximum number of in-flight upstream requests

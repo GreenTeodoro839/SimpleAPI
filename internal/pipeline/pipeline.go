@@ -127,11 +127,16 @@ func (h *Handler) ServeProxy(c *gin.Context) {
 		if rm == nil {
 			continue
 		}
-		if rm.ProviderType == sourceProto {
+		pe := snap.Indexes.Providers[rm.ProviderName]
+		if pe == nil {
+			continue
+		}
+		upstream := pe.ResolveUpstream(sourceProto)
+		if upstream.Type == sourceProto {
 			anyUsable = true
 			break
 		}
-		if _, ok := translate.Get(translate.Protocol(sourceProto), translate.Protocol(rm.ProviderType)); ok {
+		if _, ok := translate.Get(translate.Protocol(sourceProto), translate.Protocol(upstream.Type)); ok {
 			anyUsable = true
 			break
 		}
@@ -170,10 +175,20 @@ func (h *Handler) ServeProxy(c *gin.Context) {
 			continue
 		}
 		rm := snap.Indexes.Models[cand.InternalID]
-		pe := snap.Indexes.Providers[rm.ProviderName]
-		if rm == nil || pe == nil {
+		if rm == nil {
 			continue
 		}
+		pe := snap.Indexes.Providers[rm.ProviderName]
+		if pe == nil {
+			continue
+		}
+		// Resolve per candidate, preserving cross-provider priority/failover.
+		// Request-local copies keep the actual protocol consistent throughout
+		// HTTP auth, translation, payload rules, usage, call logs, and archives.
+		pe = pe.ResolveUpstream(sourceProto)
+		selectedModel := *rm
+		selectedModel.ProviderType = pe.Type
+		rm = &selectedModel
 
 		// (9) passthrough vs translation: resolve a translator for cross-protocol.
 		var pair *translate.Pair
@@ -249,7 +264,7 @@ func (h *Handler) ServeProxy(c *gin.Context) {
 		status, ct, respBytes, rawUpstream, retryable, errMsg := h.attemptNonStream(ctx, pe, body, retryCodes, pair)
 		cancel()
 		release()
-		finalCounts := h.recordUsage(snap, rm, sourceProto, status, respBytes, usage.Counts{}, retryable, meta, errMsg)
+		finalCounts := h.recordUsage(snap, rm, sourceProto, status, rawUpstream, usage.Counts{}, retryable, meta, errMsg)
 		if retryable {
 			fo.OnFailure(kc.Name, cand.InternalID)
 			h.logger.WithField("model", cand.InternalID).Debug("non-stream candidate failed; trying next")

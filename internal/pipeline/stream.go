@@ -308,8 +308,12 @@ func usageNodeForEvent(payload []byte, upstreamType string) (gjson.Result, bool)
 // usageNodeForBody locates the usage JSON object in a full (non-streaming)
 // response body for the given upstream protocol.
 func usageNodeForBody(body []byte, upstreamType string) (gjson.Result, bool) {
+	// A non-stream Responses API result has top-level usage. Also accept the
+	// response envelope used by response.completed events and some relays.
 	if upstreamType == protocol.Codex {
-		return gjson.GetBytes(body, "response.usage"), true
+		if node := gjson.GetBytes(body, "response.usage"); node.Exists() {
+			return node, true
+		}
 	}
 	return gjson.GetBytes(body, "usage"), true
 }

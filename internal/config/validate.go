@@ -52,8 +52,15 @@ func Validate(cfg *Config) []ValidationError {
 			}
 		}
 
-		if p.URL == "" {
-			errs = append(errs, ve(base+".url", "provider_url_required", "provider url is required"))
+		if _, u := p.UpstreamFor(p.Type); u == "" {
+			errs = append(errs, ve(base+".url", "provider_url_required",
+				"default upstream requires url or urls[type]"))
+		}
+		for pr := range p.URLs {
+			if !protocol.IsValid(pr) {
+				errs = append(errs, ve(fmt.Sprintf("%s.urls[%q]", base, pr), "invalid_protocol",
+					fmt.Sprintf("invalid upstream protocol %q (want anthropic|openai_completion|codex)", pr)))
+			}
 		}
 		if !protocol.IsValid(p.Type) {
 			errs = append(errs, ve(base+".type", "invalid_provider_type",

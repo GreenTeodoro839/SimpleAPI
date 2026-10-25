@@ -73,6 +73,8 @@ providerName/aliasA
 - `providers`：上游 provider 列表。
 - `api_keys`：入站 API key 及其协议、模型授权。
 
+`providers[].type` 指定缺少同协议地址时的默认转译协议。`providers[].urls` 可分别配置 `anthropic`、`openai_completion`、`codex` 的 base URL；同协议非空地址优先直传，否则转译到 `type` 对应的 `urls[type]`，未配置时使用原有 `url`。默认地址至少配置 `urls[type]` 或 `url` 之一，旧配置无需迁移。直传上游报错只走既有失败切换，不因报错改走转译。同一 provider 的地址共用 key、headers、模型表、模型级失败计数与并发额度。
+
 `providers[].models[].model` 是上游真实模型名。`providers[].models[].aliasA` 是内部别名。
 
 `api_keys[].models[].model` 必须填写 `providerName/aliasA`。`api_keys[].models[].aliasB` 是客户端可见模型名。
@@ -90,7 +92,8 @@ providerName/aliasA
 必需校验项：
 
 - `providers[].name` 必填，不能包含 `/`。
-- `providers[].url` 必填。
+- `providers[].url` 与 `providers[].urls[type]` 至少一个非空，后者优先。
+- `providers[].urls` 的键只能是三种固定协议，空字符串视为未配置。
 - `providers[].type` 必须是 `anthropic`、`openai_completion`、`codex` 之一。
 - `providers[].max_concurrency` 缺省为 `0`（不限制），不能为负数。
 - provider `name` 全局唯一。
@@ -151,8 +154,8 @@ Authorization: Bearer <client-api-key>
 6. 按优先级从高到低选择候选模型。
 7. 跳过已达到最大连续失败次数的候选模型。
 8. 将请求体中的 `model` 改为上游真实模型名。
-9. 若客户端 protocol 等于上游 provider type，透传请求。
-10. 若不同，执行协议翻译。
+9. 优先选择 `urls[客户端 protocol]`；未配置时选择默认 `type` 与 `urls[type]`，再回退到 `url`。
+10. 客户端 protocol 等于选中上游协议时透传，否则执行协议翻译。
 11. 在最终出站 payload 上应用 `payload` 规则。
 12. 调用上游。
 13. 返回客户端前，将响应中的 `model` 字段改回客户端请求使用的 `aliasB`。

@@ -75,3 +75,19 @@ func TestParseUsageNode_OpenAIEitherNaming(t *testing.T) {
 		t.Fatalf("got %+v want {Input:9 Output:2}", c)
 	}
 }
+
+func TestUsageNodeForBodyCodexBothShapes(t *testing.T) {
+	for _, body := range []string{
+		`{"object":"response","usage":{"input_tokens":7,"output_tokens":5,"total_tokens":12}}`,
+		`{"type":"response.completed","response":{"usage":{"input_tokens":7,"output_tokens":5,"total_tokens":12}}}`,
+	} {
+		node, ok := usageNodeForBody([]byte(body), protocol.Codex)
+		if !ok {
+			t.Fatal("missing usage node")
+		}
+		counts := parseUsageNode(node, protocol.Codex)
+		if counts.Input != 7 || counts.Output != 5 || counts.Total != 12 {
+			t.Fatalf("body %s: %+v", body, counts)
+		}
+	}
+}

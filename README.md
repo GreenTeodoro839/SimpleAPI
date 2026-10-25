@@ -11,7 +11,7 @@
 ## 特性
 
 - **三类客户端接口**：`/v1/messages`（anthropic）、`/v1/chat/completions`（openai_completion）、`/v1/responses`（codex），外加 `/v1/models`。
-- **三种上游 provider**：`anthropic`、`openai_completion`、`codex`。同协议透传，跨协议翻译（文本 / 图片 / 工具调用，流式 + 非流式，共 6 个方向）。
+- **多协议上游**：同一 provider 可分别配置 `anthropic`、`openai_completion`、`codex` 地址。优先同协议透传，缺失才跨协议翻译（文本 / 图片 / 工具调用，流式 + 非流式，共 6 个方向）。
 - **模型别名路由**：客户端用 `aliasB` 调用，路由到 `providerName/aliasA`，响应里的 `model` 自动改回 `aliasB`。
 - **按 API key 授权**：每个入站 key 单独配置允许的协议与模型；同一 `aliasB` 可挂多个候选，按 `priority` 排序，连续失败自动切换。
 - **Payload 规则**：`default / default-raw / override / override-raw / filter` 五类，按 internal id / 协议 / 请求头 / payload 内容匹配，用 JSON path 改写出站请求体。
@@ -51,6 +51,27 @@ export PROXY_ADMIN_KEY=change-me
 | `anthropic`            | base（不含 `/v1`）          | `{url}/v1/messages`       |
 | `openai_completion`    | 含 `/v1` 的 base           | `{url}/chat/completions`  |
 | `codex`                | 含 `/v1` 的 base           | `{url}/responses`         |
+
+同一个 provider 可通过 `urls` 分别配置三种协议的上游，路径拼接约定与上表一致：
+
+```yaml
+providers:
+  - name: multi-main
+    type: openai_completion
+    urls:
+      anthropic: https://relay.example.com/anthropic
+      openai_completion: https://relay.example.com/openai/v1
+      codex: https://relay.example.com/codex/v1
+    key: "${RELAY_API_KEY}"
+    models:
+      - model: upstream-model
+        aliasA: shared-model
+```
+
+- **同协议优先**：对应协议的 `urls` 非空时直传，保留协议原生字段；仍执行模型别名重写与已配置的 payload 规则。
+- **缺失才转译**：同协议地址未配置或为空时，转译到 `type` 指定的协议，默认地址优先取 `urls[type]`，再取原有 `url`。两者至少配置一个。
+- **兼容旧配置**：只配置 `type/url` 的 provider 行为不变，`type` 仍必填。
+- **共享资源**：各协议地址共用 key、headers、模型表、模型级失败计数和 provider 并发额度。直传请求失败沿用候选失败切换，不会改走转译。
 
 认证头：anthropic 用 `x-api-key`（+ 你配置的 headers，如 `anthropic-version`）；openai_completion / codex 用 `Authorization: Bearer`。
 
@@ -92,7 +113,9 @@ curl http://127.0.0.1:8317/v1/chat/completions \
 ## 测试
 
 ```bash
-go test ./...          # 单元测试
+go test ./...          # 全量回归，包含多协议路由和管理 API 测试
+go test -race ./...    # 数据竞争检测
+go test -timeout 90s ./internal/httpapi -run TestBrutal -count=1
 ```
 
 端到端 smoke 脚本（针对真实上游）见 `scripts/`（按需自行配置上游 key 后运行）。

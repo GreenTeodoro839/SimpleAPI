@@ -818,8 +818,48 @@ components:
 
     Provider:
       type: object
-      required: [name, type, url]
+      required: [name, type]
       additionalProperties: false
+      # A default endpoint is required even when only native protocol URLs are used.
+      anyOf:
+        - required: [url]
+          properties:
+            url:
+              type: string
+              minLength: 1
+        - properties:
+            type:
+              enum: [anthropic]
+            urls:
+              type: object
+              required: [anthropic]
+              properties:
+                anthropic:
+                  type: string
+                  minLength: 1
+          required: [urls]
+        - properties:
+            type:
+              enum: [openai_completion]
+            urls:
+              type: object
+              required: [openai_completion]
+              properties:
+                openai_completion:
+                  type: string
+                  minLength: 1
+          required: [urls]
+        - properties:
+            type:
+              enum: [codex]
+            urls:
+              type: object
+              required: [codex]
+              properties:
+                codex:
+                  type: string
+                  minLength: 1
+          required: [urls]
       properties:
         name:
           type: string
@@ -829,8 +869,27 @@ components:
           $ref: "#/components/schemas/Protocol"
         url:
           type: string
-          format: uri
-          description: 上游 base URL。
+          anyOf:
+            - maxLength: 0
+            - format: uri
+              minLength: 1
+          description: 默认转译上游 base URL；与 urls[type] 至少提供一个，urls[type] 优先。
+        urls:
+          type: object
+          additionalProperties: false
+          description: >-
+            各协议独立上游 base URL。请求协议有非空地址时优先直传，否则向 type 指定的默认
+            上游转译。空字符串视为未配置。直传失败不会改走转译。各地址共用 key、headers、models、模型级失败计数和并发额度。
+          properties:
+            anthropic:
+              type: string
+              description: Anthropic base，不含 /v1；自动追加 /v1/messages。
+            openai_completion:
+              type: string
+              description: Chat Completions base，通常含 /v1；自动追加 /chat/completions。
+            codex:
+              type: string
+              description: Responses base，通常含 /v1；自动追加 /responses。
         key:
           type: string
           description: 上游 API key，可为空。

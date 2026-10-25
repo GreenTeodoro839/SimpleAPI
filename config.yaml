@@ -83,8 +83,11 @@ request_archive:
 #       params: [ "metadata.client_debug", "metadata.disable_payload" ]
 
 # ---------------------------------------------------------------------------
-# providers：上游提供商。每个 provider 只有一套 name/type/url/headers/key。
-#   type ∈ anthropic | openai_completion | codex
+# providers：上游提供商。各协议地址共用 name/headers/key/models、模型级失败计数和并发额度。
+#   type ∈ anthropic | openai_completion | codex，指定缺少同协议地址时的转译目标。
+#   urls 可分别配置三种协议的 base URL；同协议非空地址优先直传，空字符串视为未配置。
+#   默认上游使用 urls[type]，未配置时使用 url；两者至少一个非空。旧配置无需修改。
+#   已配置的同协议地址请求失败不会改走转译，只走既有候选失败切换。
 #   url 约定：anthropic 填 base（自动追加 /v1/messages）；openai_completion / codex 填含 /v1 的 base
 #           （分别追加 /chat/completions、/responses）。
 #   max_concurrency：该 provider 最多同时进行的上游请求数；0 或不填 = 不限制。
@@ -110,6 +113,19 @@ request_archive:
 #     models:
 #       - model: "gpt-4.1-mini"
 #         aliasA: "gpt41mini"
+#
+#   # 一个 provider 同时暴露三种协议；仅保留其中部分地址也可，缺失协议转译到 type。
+#   - name: "multi-main"
+#     type: "openai_completion"
+#     urls:
+#       anthropic: "https://relay.example.com/anthropic"
+#       openai_completion: "https://relay.example.com/openai/v1"
+#       codex: "https://relay.example.com/codex/v1"
+#     key: "${RELAY_API_KEY}"
+#     headers: {}
+#     models:
+#       - model: "upstream-model"
+#         aliasA: "shared-model"
 #
 #   - name: "codex-main"
 #     type: "codex"

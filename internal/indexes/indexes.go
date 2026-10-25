@@ -26,11 +26,22 @@ type ProviderEntry struct {
 	Name    string
 	Type    string
 	URL     string
+	URLs    map[string]string
 	Key     string
 	Headers map[string]string
 	// MaxConcurrency caps in-flight upstream requests for this provider;
 	// 0 means unlimited.
 	MaxConcurrency int
+}
+
+// ResolveUpstream returns a request-local provider view with the chosen
+// protocol and URL. The shared snapshot is never mutated, so concurrent clients
+// can use different native protocols without changing each other's routing,
+// authentication, or usage parsing. Credentials and concurrency limits stay shared.
+func (p *ProviderEntry) ResolveUpstream(clientProtocol string) *ProviderEntry {
+	selected := *p
+	selected.Type, selected.URL = (config.Provider{Type: p.Type, URL: p.URL, URLs: p.URLs}).UpstreamFor(clientProtocol)
+	return &selected
 }
 
 // Candidate is one aliasB resolution within an API key.
@@ -116,7 +127,7 @@ func Build(cfg *config.Config) (*Indexes, error) {
 	for i := range cfg.Providers {
 		p := &cfg.Providers[i]
 		idx.Providers[p.Name] = &ProviderEntry{
-			Name: p.Name, Type: p.Type, URL: p.URL, Key: p.Key, Headers: p.Headers,
+			Name: p.Name, Type: p.Type, URL: p.URL, URLs: p.URLs, Key: p.Key, Headers: p.Headers,
 			MaxConcurrency: p.ConcurrencyLimit(),
 		}
 		for j := range p.Models {

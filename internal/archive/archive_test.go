@@ -94,7 +94,7 @@ func TestWriterCreatesFileWithContents(t *testing.T) {
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatalf("unmarshal: %v\n%s", err, data)
 	}
-	if got.Timestamp != rec.Timestamp || got.RequestID != "req-42" || got.APIKey != "dev-all" ||
+	if !got.Timestamp.Equal(rec.Timestamp) || got.RequestID != "req-42" || got.APIKey != "dev-all" ||
 		got.Model != "claude" || got.InternalModel != "anthropic-main/sonnet4" || got.ProviderType != "anthropic" {
 		t.Errorf("metadata mismatch: %+v", got)
 	}
