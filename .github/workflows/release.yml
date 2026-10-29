@@ -35,7 +35,7 @@ jobs:
         run: |
           ext=""
           [ "$GOOS" = "windows" ] && ext=".exe"
-          go build -trimpath -ldflags="-s -w" -o "proxy${ext}" ./cmd/proxy
+          go build -trimpath -ldflags="-s -w -X main.Version=${GITHUB_REF_NAME}" -o "proxy${ext}" ./cmd/proxy
           base="proxy-${GOOS}-${GOARCH}"
           if [ "$GOOS" = "windows" ]; then
             zip "${base}.zip" "proxy${ext}"

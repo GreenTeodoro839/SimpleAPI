@@ -3,7 +3,9 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/GreenTeodoro839/SimpleAPI/internal/config"
@@ -13,12 +15,22 @@ import (
 	"github.com/GreenTeodoro839/SimpleAPI/internal/runtime"
 )
 
+// Injected at build time via -ldflags "-X main.Version=..." by CI
+// (release tags like v0.3.11, or dev-<shortsha> for branch builds).
+var Version = "dev"
+
 func main() {
 	configPath := flag.String("config", "config.yaml", "path to config.yaml")
 	listenAddr := flag.String("listen", "", "override server.listen")
 	logLevel := flag.String("log-level", "info", "log level (debug|info|warn|error)")
 	logJSON := flag.Bool("log-json", false, "emit JSON-formatted logs")
+	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("SimpleAPI %s\n", Version)
+		os.Exit(0)
+	}
 
 	logger := logging.NewLogger(*logLevel, *logJSON)
 
@@ -57,7 +69,7 @@ func main() {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
-	logger.Infof("SimpleAPI listening on %s", addr)
+	logger.Infof("SimpleAPI %s listening on %s", Version, addr)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		logger.Fatalf("server: %v", err)
 	}
