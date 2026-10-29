@@ -45,6 +45,31 @@ func TestAccumulateUsage_StandardAnthropicWithCache(t *testing.T) {
 	}
 }
 
+// CLIProxyAPI anthropic-translated streams: message_start carries a local
+// TOTAL estimate of the input (uncached+cached, no cache fields), and the
+// authoritative uncached/cache split only arrives in the final message_delta.
+// Last-non-zero-wins must keep the delta split; the old max-merge kept the
+// larger start estimate and finalizeCounts double-counted the cached tokens.
+func TestAccumulateUsage_CLIProxyAPIEstimateShape(t *testing.T) {
+	var acc usage.Counts
+	accumulateUsage([]byte(`{"type":"message_start","message":{"usage":{"input_tokens":173188,"output_tokens":0}}}`), protocol.Anthropic, &acc)
+	accumulateUsage([]byte(`{"type":"message_delta","usage":{"input_tokens":1205,"output_tokens":366,"cache_read_input_tokens":197120}}`), protocol.Anthropic, &acc)
+	finalizeCounts(&acc, protocol.Anthropic)
+
+	if acc.Input != 1205 {
+		t.Fatalf("input: got %d want 1205 (uncached split, not the 173188 start estimate)", acc.Input)
+	}
+	if acc.CacheRead != 197120 {
+		t.Fatalf("cache_read: got %d want 197120", acc.CacheRead)
+	}
+	if acc.Output != 366 {
+		t.Fatalf("output: got %d want 366", acc.Output)
+	}
+	if acc.Total != 1205+366+197120 {
+		t.Fatalf("total: got %d want %d (cached tokens must not be double-counted)", acc.Total, 1205+366+197120)
+	}
+}
+
 func TestParseUsageNode_OpenAICachedAndReasoning(t *testing.T) {
 	c := parseUsageNode(gjson.ParseBytes([]byte(`{"prompt_tokens":120,"completion_tokens":30,"total_tokens":200,"prompt_tokens_details":{"cached_tokens":50},"completion_tokens_details":{"reasoning_tokens":12}}`)), protocol.OpenAICompletion)
 	if c.Input != 120 || c.Output != 30 || c.Cached != 50 || c.Reasoning != 12 || c.Total != 200 {

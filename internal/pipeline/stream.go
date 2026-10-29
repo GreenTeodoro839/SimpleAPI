@@ -238,35 +238,45 @@ func (h *Handler) attemptStream(c *gin.Context, pe *indexes.ProviderEntry, body 
 }
 
 // accumulateUsage reads token counts out of one upstream SSE data payload into
-// acc, keeping the maximum seen per counter.
+// acc.
 //
-// Providers disagree on where the real counts live, so we take the maximum
-// value seen for each counter across the relevant events:
-//   - Standard Anthropic / DeepSeek: message_start carries the real
-//     input_tokens; message_delta carries the final output_tokens.
+// Providers disagree on where the real counts live, so counters are merged
+// across the relevant events with two different strategies:
+//   - Output / Cached / Reasoning / Total are cumulative: keep the maximum.
+//   - Input / CacheRead / CacheCreation use LAST-NON-ZERO-WINS. Events arrive
+//     in order, and the authoritative input/cache split is always in the last
+//     event that carries it. Max-merging is unsafe here because providers
+//     disagree on the *semantics* of input_tokens, not just its location:
+//   - Standard Anthropic: message_start carries the real uncached
+//     input_tokens plus cache fields; message_delta carries the final output.
 //   - GLM: message_start.usage is all zeros (a placeholder); the real
 //     input_tokens AND output_tokens both arrive in the final message_delta.
-//
-// Taking the max covers both shapes (and providers that emit running counts):
-// the placeholder 0 never overrides a real value, and the largest seen count is
-// the final one.
+//   - CLIProxyAPI (anthropic-translated streams): message_start carries a
+//     LOCAL TOTAL ESTIMATE of the input (input+cache, no cache fields) so
+//     Claude Code compaction keeps working; the real uncached split only
+//     arrives in message_delta. Max-merging would keep the larger estimate
+//     and finalizeCounts would double-count the cached tokens in the total.
 func accumulateUsage(payload []byte, upstreamType string, acc *usage.Counts) {
 	node, ok := usageNodeForEvent(payload, upstreamType)
 	if !ok || !node.Exists() {
 		return
 	}
 	c := parseUsageNode(node, upstreamType)
-	if c.Input > acc.Input {
+	// Input-side counters: a later authoritative split must override earlier
+	// values, whether they are placeholders (GLM) or semantic mismatches (a
+	// CLIProxyAPI start-event total estimate larger than the uncached truth).
+	if c.Input > 0 {
 		acc.Input = c.Input
 	}
-	if c.Output > acc.Output {
-		acc.Output = c.Output
-	}
-	if c.CacheRead > acc.CacheRead {
+	if c.CacheRead > 0 {
 		acc.CacheRead = c.CacheRead
 	}
-	if c.CacheCreation > acc.CacheCreation {
+	if c.CacheCreation > 0 {
 		acc.CacheCreation = c.CacheCreation
+	}
+	// Cumulative counters: the largest seen count is the final one.
+	if c.Output > acc.Output {
+		acc.Output = c.Output
 	}
 	if c.Cached > acc.Cached {
 		acc.Cached = c.Cached
