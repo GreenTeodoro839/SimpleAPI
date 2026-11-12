@@ -15,14 +15,24 @@ import (
 var defaultClient = &http.Client{Timeout: 0}
 
 // Do issues a POST to the provider's protocol-specific URL with the given body.
-// The caller owns response streaming; resp.Body must be closed by the caller.
-func Do(ctx context.Context, pe *indexes.ProviderEntry, body []byte) (*http.Response, error) {
+// inbound carries the client request headers that are safe to forward; query is
+// the raw client query string to preserve for same-protocol passthrough (empty
+// for translated requests). The caller owns response streaming; resp.Body must
+// be closed by the caller.
+func Do(ctx context.Context, pe *indexes.ProviderEntry, body []byte, inbound http.Header, query string) (*http.Response, error) {
 	url := BuildURL(pe.URL, pe.Type)
+	if query != "" {
+		sep := "?"
+		if strings.Contains(url, "?") {
+			sep = "&"
+		}
+		url += sep + query
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
-	req.Header = BuildHeaders(pe.Type, pe.Key, pe.Headers)
+	req.Header = BuildHeaders(pe.Type, pe.Key, pe.Headers, inbound)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	return defaultClient.Do(req)

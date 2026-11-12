@@ -69,11 +69,13 @@ providers:
 ```
 
 - **同协议优先**：对应协议的 `urls` 非空时直传，保留协议原生字段；仍执行模型别名重写与已配置的 payload 规则。
+- **请求头透传**：除入站认证（`Authorization` / `x-api-key`）、Cookie、逐跳/框架头（`Connection`、`Content-Length`、`Transfer-Encoding` 等）、`Accept-Encoding` 与代理来源头（`Forwarded`、`X-Forwarded-*`、`X-Real-IP`、`Origin`、`Referer`）外，客户端请求头原样转发到上游；`providers[].headers` 优先覆盖。这样 Claude Code 的 `X-Claude-Code-Session-Id`、`anthropic-beta`、`User-Agent` 等能到达需要它们的上游（例如 OpenCode Go）。
+- **查询串**：同协议直传保留客户端查询串（如 `/v1/messages?beta=true`）；跨协议翻译不转发源协议的查询串。
 - **缺失才转译**：同协议地址未配置或为空时，转译到 `type` 指定的协议，默认地址优先取 `urls[type]`，再取原有 `url`。两者至少配置一个。
 - **兼容旧配置**：只配置 `type/url` 的 provider 行为不变，`type` 仍必填。
 - **共享资源**：各协议地址共用 key、headers、模型表、模型级失败计数和 provider 并发额度。直传请求失败沿用候选失败切换，不会改走转译。
 
-认证头：anthropic 用 `x-api-key`（+ 你配置的 headers，如 `anthropic-version`）；openai_completion / codex 用 `Authorization: Bearer`。
+认证头：anthropic 用 `x-api-key`（+ 你配置的 headers，如 `anthropic-version`）；openai_completion / codex 用 `Authorization: Bearer`。客户端带来的认证头不会转发，始终替换为 provider 的 key。
 
 ## 客户端调用示例
 

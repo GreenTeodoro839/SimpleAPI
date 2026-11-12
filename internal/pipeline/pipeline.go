@@ -235,9 +235,17 @@ func (h *Handler) ServeProxy(c *gin.Context) {
 			continue
 		}
 
+		// Client query strings are meaningful only when the upstream speaks the
+		// same protocol (e.g. Claude Code's /v1/messages?beta=true). A translated
+		// request must not carry the source protocol's query parameters.
+		query := ""
+		if pair == nil {
+			query = c.Request.URL.RawQuery
+		}
+
 		if isStream {
 			idleTimeout := time.Duration(snap.Config.Server.StreamIdleTimeout()) * time.Second
-			_, cleanComplete, retryable, upStatus, counts, errMsg := h.attemptStream(c, pe, body, aliasB, rewrite, retryCodes, pair, idleTimeout, archiveSink)
+			_, cleanComplete, retryable, upStatus, counts, errMsg := h.attemptStream(c, pe, body, c.Request.Header, query, aliasB, rewrite, retryCodes, pair, idleTimeout, archiveSink)
 			release()
 			finalCounts := h.recordUsage(snap, rm, sourceProto, upStatus, nil, counts, retryable || !cleanComplete, meta, errMsg)
 			if retryable {
@@ -261,7 +269,7 @@ func (h *Handler) ServeProxy(c *gin.Context) {
 		}
 
 		ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
-		status, ct, respBytes, rawUpstream, retryable, errMsg := h.attemptNonStream(ctx, pe, body, retryCodes, pair)
+		status, ct, respBytes, rawUpstream, retryable, errMsg := h.attemptNonStream(ctx, pe, body, c.Request.Header, query, retryCodes, pair)
 		cancel()
 		release()
 		finalCounts := h.recordUsage(snap, rm, sourceProto, status, rawUpstream, usage.Counts{}, retryable, meta, errMsg)

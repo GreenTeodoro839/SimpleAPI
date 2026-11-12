@@ -26,8 +26,8 @@ import (
 // protocol before return. rawBytes is the pre-translation upstream body — the
 // remote's original response, identical to respBytes unless a translator
 // rewrote a 2xx body.
-func (h *Handler) attemptNonStream(ctx context.Context, pe *indexes.ProviderEntry, body []byte, retryCodes []int, pair *translate.Pair) (status int, contentType string, respBytes, rawBytes []byte, retryable bool, errMsg string) {
-	resp, err := provider.Do(ctx, pe, body)
+func (h *Handler) attemptNonStream(ctx context.Context, pe *indexes.ProviderEntry, body []byte, inbound http.Header, query string, retryCodes []int, pair *translate.Pair) (status int, contentType string, respBytes, rawBytes []byte, retryable bool, errMsg string) {
+	resp, err := provider.Do(ctx, pe, body, inbound, query)
 	if err != nil {
 		h.logger.WithError(err).WithField("provider", pe.Name).Debug("upstream non-stream call failed")
 		return 0, "", nil, nil, true, err.Error()
@@ -66,10 +66,10 @@ func (h *Handler) attemptNonStream(ctx context.Context, pe *indexes.ProviderEntr
 // Returns committed (bytes written → cannot retry), cleanComplete, retryable,
 // the upstream HTTP status (0 if the call failed before any response), the
 // accumulated token counts, and an error reason string (empty on success).
-func (h *Handler) attemptStream(c *gin.Context, pe *indexes.ProviderEntry, body []byte, aliasB string, rewrite bool, retryCodes []int, pair *translate.Pair, idleTimeout time.Duration, archiveSink *bytes.Buffer) (committed, cleanComplete, retryable bool, status int, counts usage.Counts, errMsg string) {
+func (h *Handler) attemptStream(c *gin.Context, pe *indexes.ProviderEntry, body []byte, inbound http.Header, query string, aliasB string, rewrite bool, retryCodes []int, pair *translate.Pair, idleTimeout time.Duration, archiveSink *bytes.Buffer) (committed, cleanComplete, retryable bool, status int, counts usage.Counts, errMsg string) {
 	// No total deadline: the upstream call is bound to the client connection so a
 	// long-but-active stream is never cut, only a stalled one (idleTimeout).
-	resp, err := provider.Do(c.Request.Context(), pe, body)
+	resp, err := provider.Do(c.Request.Context(), pe, body, inbound, query)
 	if err != nil {
 		h.logger.WithError(err).WithField("provider", pe.Name).Debug("upstream stream call failed")
 		return false, false, true, 0, usage.Counts{}, err.Error()

@@ -275,6 +275,15 @@ payload:
 
 同协议不做字段重组，只处理认证头、URL、`model` 重写、显式配置的 payload 规则、响应 `model` 重写。
 
+同协议直传时还会透传客户端的端到端请求头，并保留客户端查询串（例如 Claude Code 的 `/v1/messages?beta=true` 与 `X-Claude-Code-Session-Id`）。以下内容不转发：
+
+- 入站认证头 `Authorization` / `x-api-key`（始终替换为 provider key）与 Cookie；
+- 逐跳/框架头（`Connection`、`Content-Length`、`Transfer-Encoding`、`Expect` 等），由 `net/http` 按新请求体重新生成；
+- `Accept-Encoding`，交给 `net/http` 协商并透明解压（JSON/SSE 读取逻辑不能处理 br/zstd）；
+- 代理来源头与浏览器来源头（`Forwarded`、`X-Forwarded-*`、`X-Real-IP`、`Origin`、`Referer`）。
+
+`providers[].headers` 始终覆盖同名的客户端请求头。跨协议翻译不转发源协议的查询串。
+
 跨协议翻译只覆盖三种协议之间的基础文本、图片、工具调用和流式响应映射。建议第一版明确限制：
 
 - 支持 system/user/assistant 基础消息。
