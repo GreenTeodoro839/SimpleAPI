@@ -134,7 +134,7 @@ type RequestArchiveConfig struct {
 // call_log_max_entries: 0).
 func (r RequestArchiveConfig) Directory() string { return r.Dir }
 
-// PayloadConfig holds the five ordered outbound-payload rule lists (§10).
+// PayloadConfig holds the five ordered outbound-payload rule lists (§11).
 // YAML keys for the raw phases use hyphens.
 type PayloadConfig struct {
 	Default     []PayloadRule       `yaml:"default"      json:"default"`
@@ -209,8 +209,15 @@ func (p Provider) ConcurrencyLimit() int {
 
 // ProviderModel is one upstream model under a provider.
 type ProviderModel struct {
-	Model  string `yaml:"model"                       json:"model"`
-	AliasA string `yaml:"aliasA"                      json:"aliasA"`
+	Model                     string            `yaml:"model"                       json:"model"`
+	AliasA                    string            `yaml:"aliasA"                      json:"aliasA"`
+	AnthropicWebSearchForward *WebSearchForward `yaml:"anthropic_web_search_forward" json:"anthropic_web_search_forward"`
+}
+
+// WebSearchForward reroutes an Anthropic web_search request to a target model.
+type WebSearchForward struct {
+	Enabled     bool   `yaml:"enabled"      json:"enabled"`
+	TargetModel string `yaml:"target_model" json:"target_model"` // internal model id providerName/aliasA
 }
 
 // ClientApiKey is one inbound API key with its protocol and model authorization.

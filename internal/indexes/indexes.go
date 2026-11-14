@@ -19,6 +19,7 @@ type ResolvedModel struct {
 	UpstreamModel string
 	AliasA        string // effective alias (model name when aliasA was empty)
 	InternalID    string // providerName + "/" + AliasA
+	WebSearch     *config.WebSearchForward
 }
 
 // ProviderEntry is one upstream provider with resolved auth material.
@@ -140,6 +141,7 @@ func Build(cfg *config.Config) (*Indexes, error) {
 				UpstreamModel: m.Model,
 				AliasA:        eff,
 				InternalID:    id,
+				WebSearch:     m.AnthropicWebSearchForward,
 			}
 			idx.InternalIDs = append(idx.InternalIDs, id)
 		}
