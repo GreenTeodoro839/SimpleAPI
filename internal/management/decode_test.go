@@ -86,13 +86,53 @@ func TestDecodeMalformedUnspecifiedReportsYAMLFallback(t *testing.T) {
 	}
 }
 
+func TestDecodeImageInputRoundTrips(t *testing.T) {
+	// image_input must decode from both management wire formats, and DeepCopy
+	// (yaml round-trip) must keep nil -> nil and false -> false.
+	jsonBody := []byte(`{"name":"p","type":"openai_completion","url":"https://example.com/v1","models":[{"model":"m","image_input":false}]}`)
+	var pj config.Provider
+	if err := decode("application/json", jsonBody, &pj); err != nil {
+		t.Fatalf("decode JSON failed: %v", err)
+	}
+	if len(pj.Models) != 1 || pj.Models[0].ImageInput == nil || *pj.Models[0].ImageInput {
+		t.Fatalf("JSON image_input = %v, want false", pj.Models[0].ImageInput)
+	}
+
+	yamlBody := []byte("name: p\ntype: openai_completion\nurl: https://example.com/v1\nmodels:\n  - model: m\n    image_input: false\n  - model: n\n")
+	var py config.Provider
+	if err := decode("application/yaml", yamlBody, &py); err != nil {
+		t.Fatalf("decode YAML failed: %v", err)
+	}
+	if len(py.Models) != 2 {
+		t.Fatalf("models = %d, want 2", len(py.Models))
+	}
+	if py.Models[0].ImageInput == nil || *py.Models[0].ImageInput {
+		t.Fatalf("YAML image_input = %v, want false", py.Models[0].ImageInput)
+	}
+	if py.Models[1].ImageInput != nil {
+		t.Fatalf("omitted image_input = %v, want nil (defaults to true)", py.Models[1].ImageInput)
+	}
+
+	cp := config.DeepCopy(&config.Config{Providers: []config.Provider{py}})
+	m0, m1 := cp.Providers[0].Models[0], cp.Providers[0].Models[1]
+	if m0.ImageInput == nil || *m0.ImageInput {
+		t.Fatalf("DeepCopy image_input = %v, want preserved false", m0.ImageInput)
+	}
+	if m1.ImageInput != nil {
+		t.Fatalf("DeepCopy omitted image_input = %v, want nil", m1.ImageInput)
+	}
+	if m0.ImageInputAllowed() || !m1.ImageInputAllowed() {
+		t.Fatalf("ImageInputAllowed: got %v/%v, want false/true", m0.ImageInputAllowed(), m1.ImageInputAllowed())
+	}
+}
+
 func TestRequestMIME(t *testing.T) {
 	cases := map[string]string{
-		"application/json":                  "application/json",
-		"application/json; charset=utf-8":   "application/json",
-		"  Application/YAML ; charset=x  ":  "application/yaml",
-		"application/vnd.foo+json":          "application/vnd.foo+json",
-		"":                                  "",
+		"application/json":                 "application/json",
+		"application/json; charset=utf-8":  "application/json",
+		"  Application/YAML ; charset=x  ": "application/yaml",
+		"application/vnd.foo+json":         "application/vnd.foo+json",
+		"":                                 "",
 	}
 	for in, want := range cases {
 		if got := requestMIME(in); got != want {

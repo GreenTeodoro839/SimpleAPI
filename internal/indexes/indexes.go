@@ -20,6 +20,7 @@ type ResolvedModel struct {
 	AliasA        string // effective alias (model name when aliasA was empty)
 	InternalID    string // providerName + "/" + AliasA
 	WebSearch     *config.WebSearchForward
+	ImageInput    bool // resolved providers[].models[].image_input (default true); false = strip image blocks before forwarding
 }
 
 // ProviderEntry is one upstream provider with resolved auth material.
@@ -142,6 +143,7 @@ func Build(cfg *config.Config) (*Indexes, error) {
 				AliasA:        eff,
 				InternalID:    id,
 				WebSearch:     m.AnthropicWebSearchForward,
+				ImageInput:    m.ImageInputAllowed(),
 			}
 			idx.InternalIDs = append(idx.InternalIDs, id)
 		}

@@ -131,6 +131,7 @@ func (h *Handler) listModels(c *gin.Context) {
 			"provider_type":  rm.ProviderType,
 			"aliasA":         rm.AliasA,
 			"upstream_model": rm.UpstreamModel,
+			"image_input":    rm.ImageInput,
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{"models": models})

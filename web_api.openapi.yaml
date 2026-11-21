@@ -920,6 +920,13 @@ components:
         aliasA:
           type: string
           description: 内部别名；为空时默认等于 model。
+        image_input:
+          type: boolean
+          nullable: true
+          default: true
+          description: >-
+            是否接受图片输入。缺省为 true；设为 false 时转发前把请求中的图片内容块原地替换为
+            固定文本占位 "[Unsupported Image]"（DEVELOPMENT.md §12.1），纯文本上游不再因图片报错。
         anthropic_web_search_forward:
           $ref: "#/components/schemas/WebSearchForward"
 
@@ -978,7 +985,7 @@ components:
 
     InternalModel:
       type: object
-      required: [id, provider, provider_type, aliasA, upstream_model]
+      required: [id, provider, provider_type, aliasA, upstream_model, image_input]
       properties:
         id:
           type: string
@@ -994,6 +1001,9 @@ components:
         upstream_model:
           type: string
           example: "claude-sonnet-4-20250514"
+        image_input:
+          type: boolean
+          description: 该模型是否接受图片输入（已解析缺省值；false 的模型转发前剥离图片）。
 
     UsageItem:
       type: object

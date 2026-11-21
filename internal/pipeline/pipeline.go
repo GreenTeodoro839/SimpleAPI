@@ -18,6 +18,7 @@ import (
 	"github.com/GreenTeodoro839/SimpleAPI/internal/archive"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/calllog"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/indexes"
+	"github.com/GreenTeodoro839/SimpleAPI/internal/mediastrip"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/modelrewrite"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/payload"
 	"github.com/GreenTeodoro839/SimpleAPI/internal/protocol"
@@ -220,6 +221,20 @@ func (h *Handler) ServeProxy(c *gin.Context) {
 
 		// (9) outbound model rewrite for this candidate.
 		body, _ := sjson.SetBytes(rawBody, "model", rm.UpstreamModel)
+		// (9b) image-input stripping (§12.1): a model flagged image_input: false
+		// gets image content blocks in the SOURCE-protocol body replaced with a
+		// fixed text placeholder before translation or passthrough, so text-only
+		// upstreams don't 400. In-place 1:1 replacement never shrinks arrays (an
+		// empty Anthropic content array is invalid). Runs after the web_search
+		// forward above, so a forwarded request is governed by the target model's
+		// flag, and before translation/payload rules.
+		if !rm.ImageInput {
+			if stripped, n := mediastrip.Apply(body, sourceProto); n > 0 {
+				body = stripped
+				h.logger.WithField("model", rm.InternalID).WithField("replaced", n).
+					Debug("image blocks replaced with text placeholder")
+			}
+		}
 		// (10 cont.) translate the request body to the upstream protocol.
 		if pair != nil {
 			tb, terr := pair.Request(body)

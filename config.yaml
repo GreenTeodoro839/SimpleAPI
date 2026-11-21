@@ -105,6 +105,7 @@ request_archive:
 #     models:
 #       - model: "claude-sonnet-4-20250514"   # 上游真实模型名
 #         aliasA: "sonnet4"                    # 内部别名，为空则等于 model
+#         # image_input: false                  # 可选：该模型不接受图片输入；转发前把图片内容块原地替换为文本占位
 #         # anthropic_web_search_forward:      # 可选：把带 web_search 工具的请求转发到 target
 #         #   enabled: true
 #         #   target_model: "anthropic-search/sonnet4-search"

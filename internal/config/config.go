@@ -212,6 +212,17 @@ type ProviderModel struct {
 	Model                     string            `yaml:"model"                       json:"model"`
 	AliasA                    string            `yaml:"aliasA"                      json:"aliasA"`
 	AnthropicWebSearchForward *WebSearchForward `yaml:"anthropic_web_search_forward" json:"anthropic_web_search_forward"`
+	ImageInput                *bool             `yaml:"image_input"                 json:"image_input"`
+}
+
+// ImageInputAllowed reports whether this model accepts image content blocks.
+// Omitted (nil) defaults to true; image stripping is strictly opt-in per
+// model with image_input: false (DEVELOPMENT.md §12.1).
+func (m ProviderModel) ImageInputAllowed() bool {
+	if m.ImageInput != nil {
+		return *m.ImageInput
+	}
+	return true
 }
 
 // WebSearchForward reroutes an Anthropic web_search request to a target model.

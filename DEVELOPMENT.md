@@ -77,6 +77,8 @@ providerName/aliasA
 
 `providers[].models[].model` 是上游真实模型名。`providers[].models[].aliasA` 是内部别名。
 
+`providers[].models[].image_input`（布尔，缺省 `true`）声明该模型是否接受图片输入。设为 `false` 时，转发前把请求中的图片内容块原地替换为固定文本占位，详见 §12.1。
+
 `api_keys[].models[].model` 必须填写 `providerName/aliasA`。`api_keys[].models[].aliasB` 是客户端可见模型名。
 
 `api_keys[].enabled` 控制该 key 是否启用（缺省为 `true`）。设为 `false` 时该 key 不可用：认证阶段直接拒绝，不会进入协议校验或路由。
@@ -233,7 +235,7 @@ anthropic_web_search_forward:
 
 ## 11. Payload 规则配置
 
-Payload 规则用于在请求已经完成鉴权、模型路由、`web_search` 转发决策、协议翻译和上游真实 `model` 改写之后，对最终发给上游的 JSON payload 做显式调整。
+Payload 规则用于在请求已经完成鉴权、模型路由、`web_search` 转发决策、上游真实 `model` 改写、图片占位替换（§12.1）和协议翻译之后，对最终发给上游的 JSON payload 做显式调整。
 
 支持五类规则，执行顺序固定为：
 
@@ -325,6 +327,32 @@ payload:
 
 跨协议翻译失败时返回 `400` 或 `501`，不要伪造上游错误。
 
+### 12.1 图片输入剥离
+
+provider model 配置 `image_input: false` 后，该模型被视为不支持图片输入。转发前，代理在**客户端源协议**请求体上把图片内容块原地替换为固定文本占位 `[Unsupported Image]`，避免纯文本上游返回 4xx。
+
+各入站协议识别的图片形态：
+
+- Anthropic：`messages[*].content[*].type == "image"`，以及嵌套在 `tool_result.content[*]` 内的 image 块。
+- OpenAI Chat Completions：`messages[*].content[*].type == "image_url"`。
+- Codex Responses：顶层 `input[*].type == "input_image"` 的整个 item，以及 `input[*].content[*]` 中 `type == "input_image"` 或 `"image"` 的内容块。
+
+行为要求：
+
+- 替换是 1:1 原地替换，内容数组长度不变——Anthropic 消息的 content 数组永远不会因此变成空数组。
+- Anthropic 图片块上的 `cache_control` 在替换出的文本块上原样保留（prompt cache 断点不丢失）。
+- Codex 顶层 `input_image` item 替换为合法的 message item（`{"type":"message","role":"user","content":[{"type":"input_text","text":"[Unsupported Image]"}]}`），保持 `input[]` 长度不变。
+- 执行顺序在 `web_search` 转发之后——转发场景以 **target 模型**的 `image_input` 为准；在协议翻译与 payload 规则之前，因此直传与转译路径、流式与非流式都生效，payload 规则条件看到的是替换后的 body。
+- 该模型的 `image_input` 缺省（`true`）时请求体原样转发，零额外开销。
+- 请求存档（request_archive）记录的是**替换前**的客户端原始请求体。
+- 统计与调用日志维度不受影响。
+
+已知边界（第一版不处理）：
+
+- tool 输出中以纯字符串形式内嵌的 `data:` URL 图片不替换（Claude Code 发送的是类型化 image 块，主场景已覆盖）。
+- audio / document 等其他非文本内容块不替换。
+- 仅声明式配置，不做"上游报错后再剥离重试"的响应式逻辑。
+
 ## 13. 使用统计
 
 统计维度必须使用内部模型维度：
@@ -375,6 +403,7 @@ internal/router/        # aliasB -> internal model id 路由与失败切换
 internal/provider/      # provider 请求执行
 internal/translate/     # 三种协议之间的翻译
 internal/payload/       # payload 规则匹配、校验和 JSON path 改写
+internal/mediastrip/    # image_input: false 模型的图片内容块剥离（§12.1）
 internal/websearch/     # Anthropic web_search 触发检测和转发决策
 internal/usage/         # 内存统计
 internal/management/    # 管理 API
@@ -428,6 +457,7 @@ internal/httpapi/       # 对外三类兼容接口
 - 同一 API key 下相同 `aliasB` 能按优先级和连续失败次数切换。
 - 含 `*` 的通配 `aliasB` 能匹配客户端请求的 `model`（精确名优先；多通配按配置声明顺序），且对客户端透明——响应 `model` 与调用记录都记客户端发送值。
 - Anthropic `web_search` 请求能透明转发到配置的 target model。
+- `image_input: false` 的模型能把三种入站协议请求中的图片内容块替换为 `[Unsupported Image]` 文本块（含 Anthropic `tool_result` 嵌套图片，保留 `cache_control`；Codex 顶层 `input_image` item 替换为合法 message item）；缺省（`true`）时请求体原样转发。
 - Payload 规则能按 internal model id、协议、请求头、payload 条件命中，并按 `default`、`default-raw`、`override`、`override-raw`、`filter` 顺序生效。
 - 非法 raw JSON payload 规则在启动和管理 API 写入时被拒绝。
 - 使用统计聚合使用 `aliasA` / internal model id，而不是 `aliasB`。
